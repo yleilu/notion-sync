@@ -3,10 +3,12 @@ import { jest } from '@jest/globals';
 jest.useFakeTimers();
 
 jest.unstable_mockModule('./sync.js', () => ({
-  syncFromNotion: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
+  syncFromNotion: jest
+    .fn<() => Promise<void>>()
+    .mockResolvedValue(undefined),
 }));
 
-let startPoller: typeof import('./poller.js')['startPoller'];
+let startPoller: (typeof import('./poller.js'))['startPoller'];
 let syncFromNotion: jest.Mock;
 
 const state = {
@@ -51,16 +53,20 @@ test('calls syncFromNotion every 30s', async () => {
 });
 
 test('errors caught — no unhandled rejection', async () => {
-  const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
-
-  (syncFromNotion as jest.Mock<() => Promise<void>>).mockRejectedValueOnce(new Error('Notion API down'));
+  const consoleError = jest
+    .spyOn(console, 'error')
+    .mockImplementation(() => {});
+  (
+    syncFromNotion as jest.Mock<() => Promise<void>>
+  ).mockRejectedValueOnce(new Error('Notion API down'));
 
   const handle = startPoller('/test/dir', state);
 
   await jest.advanceTimersByTimeAsync(30_000);
 
   expect(consoleError).toHaveBeenCalledWith(
-    'Poll error:',
+    '[%s] Poll error:',
+    expect.any(String),
     expect.any(Error),
   );
 

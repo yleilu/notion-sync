@@ -1,13 +1,10 @@
 import { Client } from '@notionhq/client';
 
 import { enqueue } from './queue.js';
+import { sleep } from './sleep.js';
 
 const notion = new Client({
   auth: process.env.NOTION_SYNC_API_SECRET,
-});
-
-const sleep = (ms: number): Promise<void> => new Promise((r) => {
-  setTimeout(r, ms);
 });
 
 const withRetry = async <T>(
@@ -100,8 +97,8 @@ export const createPage = async (
       },
     },
     children: blocks as Parameters<
-        typeof notion.pages.create
-      >[0]['children'],
+          typeof notion.pages.create
+        >[0]['children'],
   })));
 
   return response.id;
@@ -111,17 +108,26 @@ export const updatePageContent = async (
   pageId: string,
   blocks: unknown[],
 ): Promise<void> => {
+  if (blocks.length === 0) {
+    return;
+  }
+
   const existing = await enqueue(() => withRetry(() => notion.blocks.children.list({
     block_id: pageId,
     page_size: 100,
   })));
 
   // Delete all existing blocks sequentially
-  for (const block of existing.results.filter((b) => 'id' in b)) {
-    await enqueue(() => withRetry(() => notion.blocks.delete({
-      block_id: block.id,
-    })));
-  }
+  await existing.results
+    .filter((b) => 'id' in b)
+    .reduce(
+      (chain, block) => chain.then(async () => {
+        await enqueue(() => withRetry(() => notion.blocks.delete({
+          block_id: block.id,
+        })));
+      }),
+      Promise.resolve(),
+    );
 
   // Append new blocks in chunks of 100
   const chunks = Array.from(
@@ -130,14 +136,17 @@ export const updatePageContent = async (
     },
     (_, i) => blocks.slice(i * 100, (i + 1) * 100),
   );
-  for (const chunk of chunks) {
-    await enqueue(() => withRetry(() => notion.blocks.children.append({
-      block_id: pageId,
-      children: chunk as Parameters<
-          typeof notion.blocks.children.append
-        >[0]['children'],
-    })));
-  }
+  await chunks.reduce(
+    (chain, chunk) => chain.then(async () => {
+      await enqueue(() => withRetry(() => notion.blocks.children.append({
+        block_id: pageId,
+        children: chunk as Parameters<
+                typeof notion.blocks.children.append
+              >[0]['children'],
+      })));
+    }),
+    Promise.resolve(),
+  );
 };
 
 export const archivePage = async (
@@ -157,7 +166,9 @@ export const getPageMeta = async (
   })));
 
   if (!('last_edited_time' in page)) {
-    throw new Error('Page %s has no last_edited_time');
+    throw new Error(
+      `Page ${pageId} has no last_edited_time`,
+    );
   }
 
   return {

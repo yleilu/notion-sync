@@ -15,7 +15,7 @@
     "test": "NODE_OPTIONS='--experimental-vm-modules' jest",
     "test:watch": "NODE_OPTIONS='--experimental-vm-modules' jest --watch",
     "test:coverage": "NODE_OPTIONS='--experimental-vm-modules' jest --coverage",
-    "install:link": "tsc && chmod +x dist/index.js && LINK_DIR=${LINK_DIR:-$HOME/.local/bin} && mkdir -p \"$LINK_DIR\" && ln -sf \"$(pwd)/dist/index.js\" \"$LINK_DIR/notion-sync\" && echo \"Linked: $LINK_DIR/notion-sync → $(pwd)/dist/index.js\""
+    "install:link": "chmod +x dist/index.js && LINK_DIR=${LINK_DIR:-$HOME/.local/bin} && mkdir -p \"$LINK_DIR\" && ln -sf \"$(pwd)/dist/index.js\" \"$LINK_DIR/notion-sync\" && echo \"Linked: $LINK_DIR/notion-sync → $(pwd)/dist/index.js\""
   },
   "dependencies": {
     "@notionhq/client": "^2.2.15",

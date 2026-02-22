@@ -1,4 +1,4 @@
-import { resolve } from 'path';
+import { resolve, relative, extname } from 'path';
 
 import { watch } from 'chokidar';
 
@@ -33,40 +33,40 @@ export const startWatcher = (
 ): FSWatcher => {
   const absDir = resolve(dirPath);
 
-  const watcher = watch('**/*.md', {
-    cwd: absDir,
+  // Watch directory directly — glob patterns don't follow symlinks in chokidar v4
+  const watcher = watch(absDir, {
     ignoreInitial: true,
     followSymlinks: true,
   });
 
-  watcher.on('add', (relPath) => {
-    const absPath = resolve(absDir, relPath);
-    debounce(relPath, () => {
-      syncFile(absPath, absDir, state).catch((err) => console.error('Sync error (add %s):', relPath, err));
-    });
-  });
+  const handle = (event: string, absPath: string): void => {
+    if (extname(absPath) !== '.md') {
+      return;
+    }
 
-  watcher.on('change', (relPath) => {
-    const absPath = resolve(absDir, relPath);
-    debounce(relPath, () => {
-      syncFile(absPath, absDir, state).catch((err) => console.error(
-        'Sync error (change %s):',
-        relPath,
-        err,
-      ));
-    });
-  });
+    const relPath = relative(absDir, absPath);
 
-  watcher.on('unlink', (relPath) => {
-    const absPath = resolve(absDir, relPath);
-    debounce(relPath, () => {
-      syncDeleteFile(absPath, absDir, state).catch((err) => console.error(
-        'Sync error (unlink %s):',
-        relPath,
-        err,
-      ));
-    });
-  });
+    if (event === 'add' || event === 'change') {
+      debounce(relPath, () => {
+        syncFile(absPath, absDir, state).catch((err) => console.error(
+          'Sync error (%s %s):',
+          event,
+          relPath,
+          err,
+        ));
+      });
+    } else if (event === 'unlink') {
+      debounce(relPath, () => {
+        syncDeleteFile(absPath, absDir, state).catch((err) => console.error(
+          'Sync error (unlink %s):',
+          relPath,
+          err,
+        ));
+      });
+    }
+  };
+
+  watcher.on('all', handle);
 
   console.log('Watching: %s', absDir);
 

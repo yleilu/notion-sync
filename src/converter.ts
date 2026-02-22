@@ -15,5 +15,6 @@ export const blocksToMd = async (
   const mdBlocks = await n2m.pageToMarkdown(pageId);
   const { parent } = n2m.toMarkdownString(mdBlocks);
 
-  return parent;
+  // notion-to-md emits triple newlines between blocks; collapse to double
+  return parent.replace(/\n{3,}/g, '\n\n');
 };

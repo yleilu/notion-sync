@@ -1,13 +1,23 @@
+import { resolve } from 'path';
+
 import { jest } from '@jest/globals';
 
 jest.useFakeTimers();
 
-const handlers: Record<string, (path: string) => void> = {};
+const handlers: Record<
+  string,
+  (...args: unknown[]) => void
+> = {};
 const fakeWatcher = {
-  on: jest.fn((event: string, handler: (path: string) => void): typeof fakeWatcher => {
-    handlers[event] = handler;
-    return fakeWatcher;
-  }),
+  on: jest.fn(
+    (
+      event: string,
+      handler: (...args: unknown[]) => void,
+    ): typeof fakeWatcher => {
+      handlers[event] = handler;
+      return fakeWatcher;
+    },
+  ),
 };
 
 jest.unstable_mockModule('chokidar', () => ({
@@ -15,11 +25,15 @@ jest.unstable_mockModule('chokidar', () => ({
 }));
 
 jest.unstable_mockModule('./sync.js', () => ({
-  syncFile: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
-  syncDeleteFile: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
+  syncFile: jest
+    .fn<() => Promise<void>>()
+    .mockResolvedValue(undefined),
+  syncDeleteFile: jest
+    .fn<() => Promise<void>>()
+    .mockResolvedValue(undefined),
 }));
 
-let startWatcher: typeof import('./watcher.js')['startWatcher'];
+let startWatcher: (typeof import('./watcher.js'))['startWatcher'];
 let watch: jest.Mock;
 let syncFile: jest.Mock;
 let syncDeleteFile: jest.Mock;
@@ -47,11 +61,10 @@ beforeEach(() => {
   Object.keys(handlers).forEach((k) => delete handlers[k]);
 });
 
-test('creates watcher with correct options', () => {
+test('creates watcher with directory path and followSymlinks', () => {
   startWatcher('/test/dir', state);
 
-  expect(watch).toHaveBeenCalledWith('**/*.md', {
-    cwd: expect.any(String),
+  expect(watch).toHaveBeenCalledWith(resolve('/test/dir'), {
     ignoreInitial: true,
     followSymlinks: true,
   });
@@ -59,24 +72,25 @@ test('creates watcher with correct options', () => {
 
 test('debounce at 1s — rapid changes produce single sync call', async () => {
   startWatcher('/test/dir', state);
+  const absDir = resolve('/test/dir');
 
-  handlers['change']('readme.md');
-  handlers['change']('readme.md');
-  handlers['change']('readme.md');
+  handlers.all('change', resolve(absDir, 'readme.md'));
+  handlers.all('change', resolve(absDir, 'readme.md'));
+  handlers.all('change', resolve(absDir, 'readme.md'));
 
-  // Should NOT fire at 500ms
   await jest.advanceTimersByTimeAsync(500);
   expect(syncFile).not.toHaveBeenCalled();
 
-  // Should fire at 1000ms
   await jest.advanceTimersByTimeAsync(500);
   expect(syncFile).toHaveBeenCalledTimes(1);
 });
 
 test('add event triggers syncFile after debounce', async () => {
   startWatcher('/test/dir', state);
+  const absDir = resolve('/test/dir');
+  const absPath = resolve(absDir, 'new-file.md');
 
-  handlers['add']('new-file.md');
+  handlers.all('add', absPath);
 
   expect(syncFile).not.toHaveBeenCalled();
 
@@ -84,31 +98,35 @@ test('add event triggers syncFile after debounce', async () => {
 
   expect(syncFile).toHaveBeenCalledTimes(1);
   expect(syncFile).toHaveBeenCalledWith(
-    expect.stringContaining('new-file.md'),
-    expect.any(String),
+    absPath,
+    absDir,
     state,
   );
 });
 
 test('change event triggers syncFile after debounce', async () => {
   startWatcher('/test/dir', state);
+  const absDir = resolve('/test/dir');
+  const absPath = resolve(absDir, 'existing.md');
 
-  handlers['change']('existing.md');
+  handlers.all('change', absPath);
 
   await jest.advanceTimersByTimeAsync(1000);
 
   expect(syncFile).toHaveBeenCalledTimes(1);
   expect(syncFile).toHaveBeenCalledWith(
-    expect.stringContaining('existing.md'),
-    expect.any(String),
+    absPath,
+    absDir,
     state,
   );
 });
 
 test('unlink event triggers syncDeleteFile after debounce', async () => {
   startWatcher('/test/dir', state);
+  const absDir = resolve('/test/dir');
+  const absPath = resolve(absDir, 'removed.md');
 
-  handlers['unlink']('removed.md');
+  handlers.all('unlink', absPath);
 
   expect(syncDeleteFile).not.toHaveBeenCalled();
 
@@ -116,8 +134,39 @@ test('unlink event triggers syncDeleteFile after debounce', async () => {
 
   expect(syncDeleteFile).toHaveBeenCalledTimes(1);
   expect(syncDeleteFile).toHaveBeenCalledWith(
-    expect.stringContaining('removed.md'),
-    expect.any(String),
+    absPath,
+    absDir,
+    state,
+  );
+});
+
+test('ignores non-.md files', async () => {
+  startWatcher('/test/dir', state);
+  const absDir = resolve('/test/dir');
+
+  handlers.all('change', resolve(absDir, 'image.png'));
+  handlers.all('add', resolve(absDir, 'data.json'));
+
+  await jest.advanceTimersByTimeAsync(1000);
+
+  expect(syncFile).not.toHaveBeenCalled();
+  expect(syncDeleteFile).not.toHaveBeenCalled();
+});
+
+test('handles files in symlinked subdirectories', async () => {
+  startWatcher('/test/dir', state);
+  const absDir = resolve('/test/dir');
+  // chokidar emits absolute path even through symlink
+  const absPath = resolve(absDir, 'symlinked-sub/note.md');
+
+  handlers.all('change', absPath);
+
+  await jest.advanceTimersByTimeAsync(1000);
+
+  expect(syncFile).toHaveBeenCalledTimes(1);
+  expect(syncFile).toHaveBeenCalledWith(
+    absPath,
+    absDir,
     state,
   );
 });

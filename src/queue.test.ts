@@ -1,8 +1,13 @@
-import { jest, beforeAll, beforeEach, test, expect } from '@jest/globals';
+import {
+  jest,
+  beforeAll,
+  test,
+  expect,
+} from '@jest/globals';
 
 jest.useFakeTimers();
 
-let enqueue: typeof import('./queue.js')['enqueue'];
+let enqueue: (typeof import('./queue.js'))['enqueue'];
 
 beforeAll(async () => {
   const mod = await import('./queue.js');
@@ -14,7 +19,9 @@ test('sequential execution — tasks run one at a time', async () => {
 
   const taskA = enqueue(async () => {
     timeline.push('a-start');
-    await new Promise((r) => { setTimeout(r, 10); });
+    await new Promise((r) => {
+      setTimeout(r, 10);
+    });
     jest.advanceTimersByTime(10);
     timeline.push('a-end');
     return 'a';
@@ -22,7 +29,9 @@ test('sequential execution — tasks run one at a time', async () => {
 
   const taskB = enqueue(async () => {
     timeline.push('b-start');
-    await new Promise((r) => { setTimeout(r, 10); });
+    await new Promise((r) => {
+      setTimeout(r, 10);
+    });
     jest.advanceTimersByTime(10);
     timeline.push('b-end');
     return 'b';
@@ -66,9 +75,18 @@ test('inter-request delay — 334ms gap between tasks', async () => {
 test('FIFO order — tasks complete in submission order', async () => {
   const results: number[] = [];
 
-  const t1 = enqueue(async () => { results.push(1); return 1; });
-  const t2 = enqueue(async () => { results.push(2); return 2; });
-  const t3 = enqueue(async () => { results.push(3); return 3; });
+  const t1 = enqueue(async () => {
+    results.push(1);
+    return 1;
+  });
+  const t2 = enqueue(async () => {
+    results.push(2);
+    return 2;
+  });
+  const t3 = enqueue(async () => {
+    results.push(3);
+    return 3;
+  });
 
   await jest.advanceTimersByTimeAsync(2000);
 

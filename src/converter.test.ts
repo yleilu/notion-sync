@@ -24,26 +24,44 @@ const { mdToBlocks, blocksToMd } = await import('./converter.js');
 describe('converter', () => {
   describe('mdToBlocks', () => {
     it('calls markdownToBlocks and returns blocks array', () => {
-      const fakeBlocks = [{ type: 'paragraph', paragraph: {} }];
+      const fakeBlocks = [
+        {
+          type: 'paragraph',
+          paragraph: {},
+        },
+      ];
       mockMarkdownToBlocks.mockReturnValue(fakeBlocks);
 
       const result = mdToBlocks('# Hello');
 
-      expect(mockMarkdownToBlocks).toHaveBeenCalledWith('# Hello');
+      expect(mockMarkdownToBlocks).toHaveBeenCalledWith(
+        '# Hello',
+      );
       expect(result).toBe(fakeBlocks);
     });
   });
 
   describe('blocksToMd', () => {
     it('calls n2m.pageToMarkdown + toMarkdownString and returns markdown string', async () => {
-      const fakeMdBlocks = [{ type: 'heading_1', parent: '# Hello' }];
+      const fakeMdBlocks = [
+        {
+          type: 'heading_1',
+          parent: '# Hello',
+        },
+      ];
       mockPageToMarkdown.mockResolvedValue(fakeMdBlocks);
-      mockToMarkdownString.mockReturnValue({ parent: '# Hello\n' });
+      mockToMarkdownString.mockReturnValue({
+        parent: '# Hello\n',
+      });
 
       const result = await blocksToMd('page-123');
 
-      expect(mockPageToMarkdown).toHaveBeenCalledWith('page-123');
-      expect(mockToMarkdownString).toHaveBeenCalledWith(fakeMdBlocks);
+      expect(mockPageToMarkdown).toHaveBeenCalledWith(
+        'page-123',
+      );
+      expect(mockToMarkdownString).toHaveBeenCalledWith(
+        fakeMdBlocks,
+      );
       expect(result).toBe('# Hello\n');
     });
   });

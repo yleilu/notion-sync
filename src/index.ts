@@ -1,13 +1,20 @@
 #!/usr/bin/env node
 
 import { resolve } from 'path';
-import { existsSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { existsSync, openSync } from 'fs';
+import { spawn } from 'child_process';
+import { mkdir } from 'fs/promises';
 
 import {
   writePid,
-  readPid,
   cleanPid,
   saveState,
+  hashPath,
+  getStateDir,
+  readPidById,
+  cleanPidById,
+  listDaemons,
 } from './state.js';
 import { startupSync } from './sync.js';
 import { startWatcher } from './watcher.js';
@@ -15,12 +22,28 @@ import { startPoller } from './poller.js';
 
 import type { SyncState } from './state.js';
 
-const stop = async (dirArg: string): Promise<void> => {
-  const dirPath = resolve(dirArg);
-  const pid = await readPid(dirPath);
+const list = async (): Promise<void> => {
+  const daemons = await listDaemons();
+  if (daemons.length === 0) {
+    console.log('No running daemons');
+    return;
+  }
+  for (const d of daemons) {
+    console.log(
+      '%s  pid=%d  %s → %s',
+      d.id,
+      d.pid,
+      d.dirPath,
+      d.rootPageId,
+    );
+  }
+};
+
+const stop = async (id: string): Promise<void> => {
+  const pid = await readPidById(id);
 
   if (pid === null) {
-    console.error('No running daemon found for %s', dirPath);
+    console.error('No daemon found for id %s', id);
     process.exit(1);
   }
 
@@ -28,7 +51,6 @@ const stop = async (dirArg: string): Promise<void> => {
     process.kill(pid, 'SIGTERM');
     console.log('Sent SIGTERM to daemon (PID %d)', pid);
 
-    // Wait for process to exit, then clean PID
     const deadline = Date.now() + 5e3;
     while (Date.now() < deadline) {
       try {
@@ -40,7 +62,7 @@ const stop = async (dirArg: string): Promise<void> => {
         break;
       }
     }
-    await cleanPid(dirPath);
+    await cleanPidById(id);
     console.log('Daemon stopped');
   } catch (err) {
     console.error(
@@ -48,31 +70,14 @@ const stop = async (dirArg: string): Promise<void> => {
       pid,
       err,
     );
-    await cleanPid(dirPath);
+    await cleanPidById(id);
   }
 };
 
-const start = async (
-  dirArg: string,
+const daemonChild = async (
+  dirPath: string,
   pageId: string,
 ): Promise<void> => {
-  const dirPath = resolve(dirArg);
-
-  if (!existsSync(dirPath)) {
-    console.error('Directory does not exist: %s', dirPath);
-    process.exit(1);
-  }
-
-  if (!process.env.NOTION_SYNC_API_SECRET) {
-    console.error('Missing NOTION_SYNC_API_SECRET env var');
-    process.exit(1);
-  }
-
-  console.log(
-    'Starting notion-sync for %s → %s',
-    dirPath,
-    pageId,
-  );
   await writePid(dirPath);
 
   let state: SyncState;
@@ -103,20 +108,83 @@ const start = async (
   process.on('SIGTERM', shutdown);
 };
 
-const args = process.argv.slice(2);
+const start = async (
+  dirArg: string,
+  pageId: string,
+): Promise<void> => {
+  const dirPath = resolve(dirArg);
 
-if (args.at(0) === 'stop') {
-  if (!args.at(1)) {
-    console.error('Usage: notion-sync stop <path-to-dir>');
+  if (!existsSync(dirPath)) {
+    console.error('Directory does not exist: %s', dirPath);
     process.exit(1);
   }
-  stop(args.at(1)!);
-} else if (args.length >= 2) {
-  start(args.at(0)!, args.at(1)!);
+
+  if (!process.env.NOTION_SYNC_API_SECRET) {
+    console.error('Missing NOTION_SYNC_API_SECRET env var');
+    process.exit(1);
+  }
+
+  const id = hashPath(dirPath);
+  const stateDir = getStateDir(dirPath);
+  await mkdir(stateDir, {
+    recursive: true,
+  });
+
+  const logPath = resolve(stateDir, 'daemon.log');
+  const logFd = openSync(logPath, 'a');
+
+  const child = spawn(
+    process.execPath,
+    [
+      ...process.execArgv,
+      fileURLToPath(import.meta.url),
+      dirArg,
+      pageId,
+      '--daemon',
+    ],
+    {
+      detached: true,
+      stdio: ['ignore', logFd, logFd],
+      env: process.env,
+    },
+  );
+
+  child.unref();
+
+  console.log(
+    'Started notion-sync [%s] (PID %d)',
+    id,
+    child.pid,
+  );
+  console.log('Log: %s', logPath);
+};
+
+const args = process.argv.slice(2);
+const isDaemon = args.includes('--daemon');
+const positional = args.filter((a) => a !== '--daemon');
+
+if (positional.at(0) === 'list') {
+  list();
+} else if (positional.at(0) === 'stop') {
+  if (!positional.at(1)) {
+    console.error('Usage: notion-sync stop <id>');
+    process.exit(1);
+  }
+  stop(positional.at(1)!);
+} else if (positional.length >= 2) {
+  if (isDaemon) {
+    daemonChild(
+      resolve(positional.at(0)!),
+      positional.at(1)!,
+    );
+  } else {
+    start(positional.at(0)!, positional.at(1)!);
+  }
 } else {
   console.error(
     'Usage: notion-sync <path-to-dir> <page-id>',
   );
-  console.error('       notion-sync stop <path-to-dir>');
+  console.error('       notion-sync list');
+  console.error('       notion-sync stop <id>');
   process.exit(1);
 }

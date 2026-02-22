@@ -3,6 +3,7 @@ import {
   readFile,
   writeFile,
   mkdir,
+  stat,
 } from 'fs/promises';
 import {
   resolve,
@@ -26,7 +27,15 @@ import {
 } from './notion.js';
 import { mdToBlocks, blocksToMd } from './converter.js';
 
-import type { SyncState } from './state.js';
+import type { SyncState, FileState } from './state.js';
+
+type NotionTree = Record<
+  string,
+  {
+    id: string
+    children: NotionTree
+  }
+>
 
 interface LocalFile {
   relativePath: string
@@ -37,6 +46,17 @@ interface LocalDir {
   relativePath: string
   absolutePath: string
 }
+
+const buildFileState = (
+  notionPageId: string,
+  localHash: string,
+  notionLastEdited: string,
+): FileState => ({
+  notionPageId,
+  localHash,
+  notionLastEdited,
+  lastSyncedAt: new Date().toISOString(),
+});
 
 export const scanLocal = async (
   dirPath: string,
@@ -53,32 +73,36 @@ export const scanLocal = async (
     });
 
     // Sequential walk — must await each dir
-    for (const entry of entries) {
-      const abs = resolve(current, entry.name);
-      const rel = relative(dirPath, abs);
+    await entries.reduce(
+      (chain, entry) => chain.then(async () => {
+        if (entry.name === 'node_modules') return;
 
-      if (
-        entry.isDirectory()
-        || (entry.isSymbolicLink()
-          && entry.name !== 'node_modules')
-      ) {
-        if (entry.isDirectory()) {
+        const abs = resolve(current, entry.name);
+        const rel = relative(dirPath, abs);
+
+        // Follow symlinks — stat resolves to the target
+        const resolved = entry.isSymbolicLink()
+          ? await stat(abs)
+          : entry;
+
+        if (resolved.isDirectory()) {
           dirs.push({
             relativePath: rel,
             absolutePath: abs,
           });
           await walk(abs);
+        } else if (
+          resolved.isFile()
+            && extname(entry.name) === '.md'
+        ) {
+          files.push({
+            relativePath: rel,
+            absolutePath: abs,
+          });
         }
-      } else if (
-        entry.isFile()
-        && extname(entry.name) === '.md'
-      ) {
-        files.push({
-          relativePath: rel,
-          absolutePath: abs,
-        });
-      }
-    }
+      }),
+      Promise.resolve(),
+    );
   };
 
   await walk(dirPath);
@@ -88,13 +112,6 @@ export const scanLocal = async (
     dirs,
   };
 };
-
-interface NotionTree {
-  [title: string]: {
-    id: string
-    children: NotionTree
-  }
-}
 
 export const fetchNotionTree = async (
   pageId: string,
@@ -143,119 +160,34 @@ const ensureDirPage = async (
   }
 
   const title = basename(dirRelPath);
-  const pageId = await createPage(parentPageId, title, []);
+
+  // Check Notion for an existing child page with the same title
+  // to avoid duplicates when state is lost or reset
+  const siblings = await getChildPages(parentPageId);
+  const existing = siblings.find((c) => c.title === title);
+
+  let pageId: string;
+  if (existing) {
+    pageId = existing.id;
+    console.log(
+      'Reusing dir page: %s → %s',
+      dirRelPath,
+      pageId,
+    );
+  } else {
+    pageId = await createPage(parentPageId, title, []);
+    console.log(
+      'Created dir page: %s → %s',
+      dirRelPath,
+      pageId,
+    );
+  }
+
   state.dirs[dirRelPath] = {
     notionPageId: pageId,
   };
-  console.log(
-    'Created dir page: %s → %s',
-    dirRelPath,
-    pageId,
-  );
 
   return pageId;
-};
-
-const syncSingleFile = async (
-  file: LocalFile,
-  rootPageId: string,
-  state: SyncState,
-): Promise<void> => {
-  const content = await readFile(file.absolutePath, 'utf-8');
-  const hash = hashContent(content);
-  const existing = state.files[file.relativePath];
-
-  if (existing && existing.localHash === hash) {
-    console.log('Unchanged: %s', file.relativePath);
-
-    return;
-  }
-
-  const title = titleFromPath(file.relativePath);
-  const blocks = mdToBlocks(content);
-  const parentDir = dirname(file.relativePath);
-  let parentPageId = rootPageId;
-
-  if (parentDir !== '.') {
-    parentPageId = await ensureDirPage(
-      parentDir,
-      rootPageId,
-      state,
-    );
-  }
-
-  if (existing) {
-    console.log('Updating: %s', file.relativePath);
-    await updatePageContent(existing.notionPageId, blocks);
-    const { lastEditedTime } = await getPageMeta(
-      existing.notionPageId,
-    );
-    state.files[file.relativePath] = {
-      notionPageId: existing.notionPageId,
-      localHash: hash,
-      notionLastEdited: lastEditedTime,
-      lastSyncedAt: new Date().toISOString(),
-    };
-  } else {
-    console.log('Creating: %s', file.relativePath);
-    const pageId = await createPage(
-      parentPageId,
-      title,
-      blocks,
-    );
-    const { lastEditedTime } = await getPageMeta(pageId);
-    state.files[file.relativePath] = {
-      notionPageId: pageId,
-      localHash: hash,
-      notionLastEdited: lastEditedTime,
-      lastSyncedAt: new Date().toISOString(),
-    };
-  }
-};
-
-export const startupSync = async (
-  dirPath: string,
-  rootPageId: string,
-): Promise<SyncState> => {
-  const absDir = resolve(dirPath);
-  let state = await loadState(absDir);
-
-  if (!state) {
-    state = {
-      rootPageId,
-      dirPath: absDir,
-      files: {},
-      dirs: {},
-    };
-  }
-
-  state.rootPageId = rootPageId;
-  const { files, dirs } = await scanLocal(absDir);
-
-  // Ensure dir pages exist (sequential — API rate limits)
-  for (const dir of dirs) {
-    await ensureDirPage(dir.relativePath, rootPageId, state);
-  }
-
-  // Sync each file (sequential — API rate limits)
-  for (const file of files) {
-    await syncSingleFile(file, rootPageId, state);
-  }
-
-  // Archive removed files
-  const localPaths = new Set(files.map((f) => f.relativePath));
-  const removedEntries = Object.entries(state.files).filter(
-    ([relPath]) => !localPaths.has(relPath),
-  );
-  for (const [relPath, fileState] of removedEntries) {
-    console.log('Archiving: %s', relPath);
-    await archivePage(fileState.notionPageId);
-    delete state.files[relPath];
-  }
-
-  await saveState(absDir, state);
-
-  return state;
 };
 
 export const syncFile = async (
@@ -267,10 +199,19 @@ export const syncFile = async (
   const absFile = resolve(filePath);
   const relPath = relative(absDir, absFile);
   const content = await readFile(absFile, 'utf-8');
+
+  if (content.trim() === '') {
+    console.log('Skipping empty file: %s', relPath);
+
+    return;
+  }
+
   const hash = hashContent(content);
   const existing = state.files[relPath];
 
   if (existing && existing.localHash === hash) {
+    console.log('Unchanged: %s', relPath);
+
     return;
   }
 
@@ -293,29 +234,170 @@ export const syncFile = async (
     const { lastEditedTime } = await getPageMeta(
       existing.notionPageId,
     );
-    state.files[relPath] = {
-      notionPageId: existing.notionPageId,
-      localHash: hash,
-      notionLastEdited: lastEditedTime,
-      lastSyncedAt: new Date().toISOString(),
-    };
-  } else {
-    console.log('Creating: %s', relPath);
-    const pageId = await createPage(
-      parentPageId,
-      title,
-      blocks,
+    state.files[relPath] = buildFileState(
+      existing.notionPageId,
+      hash,
+      lastEditedTime,
     );
+  } else {
+    // Check Notion for an existing child page with the same title
+    const siblings = await getChildPages(parentPageId);
+    const match = siblings.find((c) => c.title === title);
+
+    let pageId: string;
+    if (match) {
+      console.log('Reusing: %s → %s', relPath, match.id);
+      pageId = match.id;
+      await updatePageContent(pageId, blocks);
+    } else {
+      console.log('Creating: %s', relPath);
+      pageId = await createPage(parentPageId, title, blocks);
+    }
+
     const { lastEditedTime } = await getPageMeta(pageId);
-    state.files[relPath] = {
-      notionPageId: pageId,
-      localHash: hash,
-      notionLastEdited: lastEditedTime,
-      lastSyncedAt: new Date().toISOString(),
-    };
+    state.files[relPath] = buildFileState(
+      pageId,
+      hash,
+      lastEditedTime,
+    );
   }
 
   await saveState(absDir, state);
+};
+
+const pullNotionOnly = async (
+  tree: NotionTree,
+  parentRelPath: string,
+  absDir: string,
+  state: SyncState,
+): Promise<void> => {
+  await Object.entries(tree).reduce(
+    (chain, [title, node]) => chain.then(async () => {
+      const hasChildren = Object.keys(node.children).length > 0;
+
+      if (hasChildren) {
+        const dirRelPath = parentRelPath
+          ? `${parentRelPath}/${title}`
+          : title;
+
+        if (!state.dirs[dirRelPath]) {
+          const localDir = resolve(absDir, dirRelPath);
+          await mkdir(localDir, {
+            recursive: true,
+          });
+          state.dirs[dirRelPath] = {
+            notionPageId: node.id,
+          };
+          console.log('Pulled dir: %s', dirRelPath);
+        }
+
+        await pullNotionOnly(
+          node.children,
+          dirRelPath,
+          absDir,
+          state,
+        );
+      } else {
+        const fileRelPath = parentRelPath
+          ? `${parentRelPath}/${title}.md`
+          : `${title}.md`;
+
+        if (!state.files[fileRelPath]) {
+          const md = await blocksToMd(node.id);
+
+          if (!md || md.trim() === '') {
+            console.log(
+              'Skipping empty Notion page: %s',
+              fileRelPath,
+            );
+
+            return;
+          }
+
+          const absFile = resolve(absDir, fileRelPath);
+          await mkdir(dirname(absFile), {
+            recursive: true,
+          });
+          await writeFile(absFile, md);
+
+          const { lastEditedTime } = await getPageMeta(
+            node.id,
+          );
+          state.files[fileRelPath] = buildFileState(
+            node.id,
+            hashContent(md),
+            lastEditedTime,
+          );
+          console.log('Pulled file: %s', fileRelPath);
+        }
+      }
+    }),
+    Promise.resolve(),
+  );
+};
+
+export const startupSync = async (
+  dirPath: string,
+  rootPageId: string,
+): Promise<SyncState> => {
+  const absDir = resolve(dirPath);
+  let state = await loadState(absDir);
+
+  if (!state) {
+    state = {
+      rootPageId,
+      dirPath: absDir,
+      files: {},
+      dirs: {},
+    };
+  }
+
+  state.rootPageId = rootPageId;
+  const { files, dirs } = await scanLocal(absDir);
+
+  // Ensure dir pages exist (sequential — API rate limits)
+  await dirs.reduce(
+    (chain, dir) => chain.then(async () => {
+      await ensureDirPage(
+        dir.relativePath,
+        rootPageId,
+        state,
+      );
+    }),
+    Promise.resolve(),
+  );
+
+  // Sync each file (sequential — API rate limits)
+  await files.reduce(
+    (chain, file) => chain.then(() => syncFile(file.absolutePath, absDir, state)),
+    Promise.resolve(),
+  );
+
+  // Capture pre-pull keys so archive doesn't touch newly pulled files
+  const prePullFileKeys = new Set(Object.keys(state.files));
+
+  // Discover Notion-only pages and pull them locally
+  const notionTree = await fetchNotionTree(rootPageId);
+  await pullNotionOnly(notionTree, '', absDir, state);
+
+  // Archive: only files that were already tracked AND deleted locally
+  const localPaths = new Set(files.map((f) => f.relativePath));
+  const removedEntries = Object.entries(state.files).filter(
+    ([relPath]) => prePullFileKeys.has(relPath)
+      && !localPaths.has(relPath),
+  );
+  await removedEntries.reduce(
+    (chain, [relPath, fileState]) => chain.then(async () => {
+      console.log('Archiving: %s', relPath);
+      await archivePage(fileState.notionPageId);
+      delete state.files[relPath];
+    }),
+    Promise.resolve(),
+  );
+
+  await saveState(absDir, state);
+
+  return state;
 };
 
 export const syncDeleteFile = async (
@@ -344,34 +426,38 @@ export const syncFromNotion = async (
   const absDir = resolve(dirPath);
 
   // Sequential — API rate limits
-  for (const [relPath, fileState] of Object.entries(
-    state.files,
-  )) {
-    try {
-      const { lastEditedTime } = await getPageMeta(
-        fileState.notionPageId,
-      );
+  await Object.entries(state.files).reduce(
+    (chain, [relPath, fileState]) => chain.then(async () => {
+      try {
+        const { lastEditedTime } = await getPageMeta(
+          fileState.notionPageId,
+        );
 
-      if (lastEditedTime !== fileState.notionLastEdited) {
-        console.log('Notion changed: %s', relPath);
-        const md = await blocksToMd(fileState.notionPageId);
-        const absFile = resolve(absDir, relPath);
-        await mkdir(dirname(absFile), {
-          recursive: true,
-        });
-        await writeFile(absFile, md);
+        if (
+          lastEditedTime !== fileState.notionLastEdited
+        ) {
+          console.log('Notion changed: %s', relPath);
+          const md = await blocksToMd(
+            fileState.notionPageId,
+          );
+          const absFile = resolve(absDir, relPath);
+          await mkdir(dirname(absFile), {
+            recursive: true,
+          });
+          await writeFile(absFile, md);
 
-        state.files[relPath] = {
-          ...fileState,
-          localHash: hashContent(md),
-          notionLastEdited: lastEditedTime,
-          lastSyncedAt: new Date().toISOString(),
-        };
+          state.files[relPath] = buildFileState(
+            fileState.notionPageId,
+            hashContent(md),
+            lastEditedTime,
+          );
+        }
+      } catch (err) {
+        console.error('Error checking %s:', relPath, err);
       }
-    } catch (err) {
-      console.error('Error checking %s:', relPath, err);
-    }
-  }
+    }),
+    Promise.resolve(),
+  );
 
   await saveState(absDir, state);
 };

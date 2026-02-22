@@ -14,6 +14,15 @@ export const startPoller = (
   );
 
   return setInterval(() => {
-    syncFromNotion(dirPath, state).catch((err) => console.error('Poll error:', err));
+    syncFromNotion(dirPath, state)
+      .then(() => console.log(
+        '[%s] Poll complete',
+        new Date().toISOString(),
+      ))
+      .catch((err) => console.error(
+        '[%s] Poll error:',
+        new Date().toISOString(),
+        err,
+      ));
   }, POLL_INTERVAL_MS);
 };

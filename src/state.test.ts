@@ -1,14 +1,24 @@
-import { jest } from '@jest/globals';
 import { resolve } from 'path';
 import { createHash } from 'crypto';
 
-const mockMkdir = jest.fn<() => Promise<undefined>>().mockResolvedValue(undefined);
+import { jest } from '@jest/globals';
+
+const mockMkdir = jest
+  .fn<() => Promise<undefined>>()
+  .mockResolvedValue(undefined);
 const mockReadFile = jest.fn<() => Promise<string>>();
-const mockWriteFile = jest.fn<() => Promise<undefined>>().mockResolvedValue(undefined);
-const mockUnlink = jest.fn<() => Promise<undefined>>().mockResolvedValue(undefined);
+const mockWriteFile = jest
+  .fn<() => Promise<undefined>>()
+  .mockResolvedValue(undefined);
+const mockUnlink = jest
+  .fn<() => Promise<undefined>>()
+  .mockResolvedValue(undefined);
+
+const mockReaddir = jest.fn<() => Promise<string[]>>();
 
 jest.unstable_mockModule('fs/promises', () => ({
   mkdir: mockMkdir,
+  readdir: mockReaddir,
   readFile: mockReadFile,
   writeFile: mockWriteFile,
   unlink: mockUnlink,
@@ -28,17 +38,17 @@ const TEST_DIR = '/tmp/test-project';
 const HOME = process.env.HOME ?? '';
 const BASE_DIR = resolve(HOME, '.notion-sync');
 
-function expectedHash(dirPath: string): string {
-  return createHash('sha256')
-    .update(resolve(dirPath))
-    .digest('hex')
-    .slice(0, 12);
-}
+const expectedHash = (dirPath: string): string => createHash('sha256')
+  .update(resolve(dirPath))
+  .digest('hex')
+  .slice(0, 12);
 
 describe('hashContent', () => {
   it('returns consistent SHA-256 hex output', () => {
     const result = hashContent('hello world');
-    const expected = createHash('sha256').update('hello world').digest('hex');
+    const expected = createHash('sha256')
+      .update('hello world')
+      .digest('hex');
 
     expect(result).toBe(expected);
     expect(result).toHaveLength(64);
@@ -79,13 +89,22 @@ describe('loadState', () => {
   };
 
   it('returns parsed JSON when file exists', async () => {
-    mockReadFile.mockResolvedValueOnce(JSON.stringify(sampleState));
+    mockReadFile.mockResolvedValueOnce(
+      JSON.stringify(sampleState),
+    );
 
     const result = await loadState(TEST_DIR);
 
     expect(result).toEqual(sampleState);
-    const expectedPath = resolve(BASE_DIR, expectedHash(TEST_DIR), 'state.json');
-    expect(mockReadFile).toHaveBeenCalledWith(expectedPath, 'utf-8');
+    const expectedPath = resolve(
+      BASE_DIR,
+      expectedHash(TEST_DIR),
+      'state.json',
+    );
+    expect(mockReadFile).toHaveBeenCalledWith(
+      expectedPath,
+      'utf-8',
+    );
   });
 
   it('returns null when file is missing', async () => {
@@ -108,8 +127,13 @@ describe('saveState', () => {
   it('creates directory and writes JSON', async () => {
     await saveState(TEST_DIR, sampleState);
 
-    const stateDir = resolve(BASE_DIR, expectedHash(TEST_DIR));
-    expect(mockMkdir).toHaveBeenCalledWith(stateDir, { recursive: true });
+    const stateDir = resolve(
+      BASE_DIR,
+      expectedHash(TEST_DIR),
+    );
+    expect(mockMkdir).toHaveBeenCalledWith(stateDir, {
+      recursive: true,
+    });
     expect(mockWriteFile).toHaveBeenCalledWith(
       resolve(stateDir, 'state.json'),
       JSON.stringify(sampleState, null, 2),
@@ -121,8 +145,13 @@ describe('writePid', () => {
   it('creates directory and writes process pid', async () => {
     await writePid(TEST_DIR);
 
-    const stateDir = resolve(BASE_DIR, expectedHash(TEST_DIR));
-    expect(mockMkdir).toHaveBeenCalledWith(stateDir, { recursive: true });
+    const stateDir = resolve(
+      BASE_DIR,
+      expectedHash(TEST_DIR),
+    );
+    expect(mockMkdir).toHaveBeenCalledWith(stateDir, {
+      recursive: true,
+    });
     expect(mockWriteFile).toHaveBeenCalledWith(
       resolve(stateDir, 'daemon.pid'),
       String(process.pid),
@@ -137,8 +166,15 @@ describe('readPid', () => {
     const result = await readPid(TEST_DIR);
 
     expect(result).toBe(12345);
-    const expectedPath = resolve(BASE_DIR, expectedHash(TEST_DIR), 'daemon.pid');
-    expect(mockReadFile).toHaveBeenCalledWith(expectedPath, 'utf-8');
+    const expectedPath = resolve(
+      BASE_DIR,
+      expectedHash(TEST_DIR),
+      'daemon.pid',
+    );
+    expect(mockReadFile).toHaveBeenCalledWith(
+      expectedPath,
+      'utf-8',
+    );
   });
 
   it('returns null when file is missing', async () => {
@@ -154,13 +190,19 @@ describe('cleanPid', () => {
   it('unlinks the pid file', async () => {
     await cleanPid(TEST_DIR);
 
-    const expectedPath = resolve(BASE_DIR, expectedHash(TEST_DIR), 'daemon.pid');
+    const expectedPath = resolve(
+      BASE_DIR,
+      expectedHash(TEST_DIR),
+      'daemon.pid',
+    );
     expect(mockUnlink).toHaveBeenCalledWith(expectedPath);
   });
 
   it('does not throw when file is already removed', async () => {
     mockUnlink.mockRejectedValueOnce(new Error('ENOENT'));
 
-    await expect(cleanPid(TEST_DIR)).resolves.toBeUndefined();
+    await expect(
+      cleanPid(TEST_DIR),
+    ).resolves.toBeUndefined();
   });
 });
