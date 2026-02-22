@@ -1,0 +1,37 @@
+{
+  "name": "notion-sync",
+  "version": "0.1.0",
+  "description": "Background daemon that syncs a local directory of markdown files to a Notion page tree",
+  "type": "module",
+  "bin": {
+    "notion-sync": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "format": "prettier --write 'src/**/*.ts' eslint.config.js prettier.config.js",
+    "lint": "eslint src/",
+    "lint:fix": "prettier --write 'src/**/*.ts' eslint.config.js prettier.config.js && eslint src/ --fix"
+  },
+  "dependencies": {
+    "@notionhq/client": "^2.2.15",
+    "@tryfabric/martian": "^1.2.4",
+    "chokidar": "^4.0.3",
+    "notion-to-md": "^3.1.1"
+  },
+  "devDependencies": {
+    "@eslint/compat": "^2.0.0",
+    "@eslint/eslintrc": "^3.3.0",
+    "eslint": "^9.18.0",
+    "eslint-config-airbnb-base": "^15.0.0",
+    "eslint-config-prettier": "^10.0.1",
+    "eslint-plugin-import": "^2.31.0",
+    "eslint-plugin-prettier": "^5.2.3",
+    "globals": "^15.14.0",
+    "prettier": "^3.4.2",
+    "prettier-plugin-packagejson": "^2.5.6",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.56.0"
+  }
+}
