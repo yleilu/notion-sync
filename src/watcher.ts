@@ -7,7 +7,7 @@ import { syncFile, syncDeleteFile } from './sync.js';
 import type { SyncState } from './state.js';
 import type { FSWatcher } from 'chokidar';
 
-const DEBOUNCE_MS = 5e2;
+const DEBOUNCE_MS = 1e3;
 const timers = new Map<
   string,
   ReturnType<typeof setTimeout>
