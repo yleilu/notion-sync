@@ -152,6 +152,24 @@ describe('scanLocal', () => {
     expect(files).toEqual([]);
     expect(dirs).toEqual([]);
   });
+
+  it('skips broken symlinks without crashing', async () => {
+    mockReaddir.mockResolvedValueOnce([
+      dirent('good.md'),
+      dirent('broken-link', 'symlink'),
+    ]);
+    mockStat.mockRejectedValueOnce(new Error('ENOENT'));
+
+    const { files, dirs } = await scanLocal(DIR);
+
+    expect(files).toEqual([
+      {
+        relativePath: 'good.md',
+        absolutePath: resolve(DIR, 'good.md'),
+      },
+    ]);
+    expect(dirs).toHaveLength(0);
+  });
 });
 
 describe('sync operations', () => {

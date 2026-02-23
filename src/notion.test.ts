@@ -233,6 +233,68 @@ describe('createPage', () => {
       children: blocks,
     });
   });
+
+  it('chunks blocks >100 into create + append calls', async () => {
+    const PAGE_ID = 'new-chunked-page';
+    mockPagesCreate.mockResolvedValueOnce({
+      id: PAGE_ID,
+    });
+    mockBlocksChildrenAppend.mockResolvedValue({
+      results: [],
+    });
+
+    // Generate 250 blocks (first 100 in create, 100 in 2nd chunk, 50 in 3rd)
+    const blocks = Array.from({
+      length: 250,
+    }, (_, i) => ({
+      type: 'paragraph',
+      paragraph: {
+        rich_text: [
+          {
+            text: {
+              content: `block-${i}`,
+            },
+          },
+        ],
+      },
+    }));
+
+    const id = await createPage(
+      '00000000-0000-0000-0000-000000000123',
+      'Big Page',
+      blocks,
+    );
+
+    expect(id).toBe(PAGE_ID);
+
+    // pages.create receives first 100 blocks
+    expect(mockPagesCreate).toHaveBeenCalledTimes(1);
+    const createArgs = mockPagesCreate.mock.calls[0][0] as {
+      children: unknown[]
+    };
+    expect(createArgs.children).toHaveLength(100);
+
+    // Two append calls for remaining 150 blocks (100 + 50)
+    expect(mockBlocksChildrenAppend).toHaveBeenCalledTimes(
+      2,
+    );
+
+    const firstAppend = mockBlocksChildrenAppend.mock
+      .calls[0][0] as {
+      block_id: string
+      children: unknown[]
+    };
+    expect(firstAppend.block_id).toBe(PAGE_ID);
+    expect(firstAppend.children).toHaveLength(100);
+
+    const secondAppend = mockBlocksChildrenAppend.mock
+      .calls[1][0] as {
+      block_id: string
+      children: unknown[]
+    };
+    expect(secondAppend.block_id).toBe(PAGE_ID);
+    expect(secondAppend.children).toHaveLength(50);
+  });
 });
 
 // ── updatePageContent ───────────────────────────────────────────────────────

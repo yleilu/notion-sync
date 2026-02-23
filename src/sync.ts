@@ -102,9 +102,20 @@ export const scanLocal = async (
         const rel = relative(dirPath, abs);
 
         // Follow symlinks — stat resolves to the target
-        const resolved = entry.isSymbolicLink()
-          ? await stat(abs)
-          : entry;
+        let resolved;
+        if (entry.isSymbolicLink()) {
+          try {
+            resolved = await stat(abs);
+          } catch {
+            console.log(
+              'Skipping broken symlink: %s',
+              rel,
+            );
+            return;
+          }
+        } else {
+          resolved = entry;
+        }
 
         if (resolved.isDirectory()) {
           dirs.push({

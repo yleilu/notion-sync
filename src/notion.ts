@@ -107,11 +107,14 @@ export const getChildPages = async (
   return pages;
 };
 
+const BLOCK_CHUNK_SIZE = 100;
+
 export const createPage = async (
   parentId: string,
   title: string,
   blocks: unknown[],
 ): Promise<string> => {
+  const firstChunk = blocks.slice(0, BLOCK_CHUNK_SIZE);
   const response = await enqueue(() => withRetry(() => notion.pages.create({
     parent: {
       page_id: parentId,
@@ -127,12 +130,28 @@ export const createPage = async (
         ],
       },
     },
-    children: blocks as Parameters<
+    children: firstChunk as Parameters<
           typeof notion.pages.create
         >[0]['children'],
   })));
 
-  return response.id;
+  const pageId = response.id;
+
+  // Append remaining blocks in chunks of 100
+  for (
+    let i = BLOCK_CHUNK_SIZE;
+    i < blocks.length;
+    i += BLOCK_CHUNK_SIZE
+  ) {
+    const chunk = blocks.slice(i, i + BLOCK_CHUNK_SIZE);
+    // eslint-disable-next-line no-loop-func -- notion ref is intentional
+    await enqueue(() => withRetry(() => notion.blocks.children.append({
+      block_id: pageId,
+      children: chunk as AppendChildren,
+    })));
+  }
+
+  return pageId;
 };
 
 type AppendChildren = Parameters<
