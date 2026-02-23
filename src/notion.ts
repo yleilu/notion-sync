@@ -90,7 +90,8 @@ export const getChildPages = async (
       ): block is typeof block & {
         type: 'child_page'
         child_page: { title: string }
-      } => 'type' in block && block.type === 'child_page',
+      } => 'type' in block && block.type === 'child_page'
+        && !('archived' in block && block.archived),
     );
     childPages.forEach((block) => {
       pages.push({

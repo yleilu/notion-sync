@@ -169,6 +169,42 @@ describe('getChildPages', () => {
     );
   });
 
+  it('excludes archived child_page blocks', async () => {
+    mockBlocksChildrenList.mockResolvedValueOnce({
+      results: [
+        {
+          id: '00000000-0000-0000-0000-00000000a001',
+          type: 'child_page',
+          archived: false,
+          child_page: {
+            title: 'Active Page',
+          },
+        },
+        {
+          id: '00000000-0000-0000-0000-00000000a002',
+          type: 'child_page',
+          archived: true,
+          child_page: {
+            title: 'Trashed Page',
+          },
+        },
+      ],
+      has_more: false,
+      next_cursor: null,
+    });
+
+    const pages = await getChildPages(
+      '00000000-0000-0000-0000-000000000010',
+    );
+
+    expect(pages).toEqual([
+      {
+        id: '00000000-0000-0000-0000-00000000a001',
+        title: 'Active Page',
+      },
+    ]);
+  });
+
   it('returns empty array when no child_page blocks exist', async () => {
     mockBlocksChildrenList.mockResolvedValueOnce({
       results: [
