@@ -7,6 +7,7 @@ export interface CliFlags {
   port?: number
   config?: string
   daemon?: boolean
+  name?: string
 }
 
 export interface ConfigFile {
@@ -19,6 +20,7 @@ export interface NotionSyncConfig {
   port: number
   dirPath: string
   rootPageId: string
+  name?: string
 }
 
 const DEFAULT_CONFIG_PATH = resolve(
@@ -49,6 +51,9 @@ export const parseCliFlags = (
       flags.config = argv[i];
     } else if (arg === '--daemon') {
       flags.daemon = true;
+    } else if (arg === '--name') {
+      i += 1;
+      flags.name = argv[i];
     } else {
       positional.push(arg);
     }
@@ -125,5 +130,10 @@ export const resolveConfig = async (
     port,
     dirPath,
     rootPageId,
+    ...(flags.name
+      ? {
+        name: flags.name,
+      }
+      : {}),
   };
 };

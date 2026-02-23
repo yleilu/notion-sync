@@ -71,6 +71,7 @@ const {
   syncFile,
   syncDeleteFile,
   syncFromNotion,
+  resolveNamespacePage,
 } = await import('./sync.js');
 
 // ── helpers ────────────────────────────────────────────────────────
@@ -831,6 +832,46 @@ describe('sync operations', () => {
       expect(mockSaveState).toHaveBeenCalled();
 
       consoleSpy.mockRestore();
+    });
+  });
+
+  describe('resolveNamespacePage', () => {
+    it('returns existing page ID when name matches', async () => {
+      mockGetChildPages.mockResolvedValueOnce([
+        {
+          id: 'existing-ns-id',
+          title: 'dirA',
+        },
+        {
+          id: 'other-id',
+          title: 'dirB',
+        },
+      ]);
+
+      const id = await resolveNamespacePage(ROOT_PAGE, 'dirA');
+
+      expect(id).toBe('existing-ns-id');
+      expect(mockGetChildPages).toHaveBeenCalledWith(ROOT_PAGE);
+      expect(mockCreatePage).not.toHaveBeenCalled();
+    });
+
+    it('creates new page when name not found', async () => {
+      mockGetChildPages.mockResolvedValueOnce([
+        {
+          id: 'other-id',
+          title: 'dirB',
+        },
+      ]);
+      mockCreatePage.mockResolvedValueOnce('new-ns-id');
+
+      const id = await resolveNamespacePage(ROOT_PAGE, 'dirA');
+
+      expect(id).toBe('new-ns-id');
+      expect(mockCreatePage).toHaveBeenCalledWith(
+        ROOT_PAGE,
+        'dirA',
+        [],
+      );
     });
   });
 

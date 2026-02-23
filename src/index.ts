@@ -17,7 +17,7 @@ import {
   cleanPidById,
   listDaemons,
 } from './state.js';
-import { startupSync, syncFromNotion } from './sync.js';
+import { startupSync, syncFromNotion, resolveNamespacePage } from './sync.js';
 import { startWatcher } from './watcher.js';
 import { parseCliFlags, resolveConfig } from './config.js';
 import { setApiSecret } from './notion.js';
@@ -90,11 +90,17 @@ const daemonChild = async (
   ]);
   setApiSecret(config.apiSecret);
 
+  let effectivePageId = pageId;
+  if (config.name) {
+    effectivePageId = await resolveNamespacePage(pageId, config.name);
+    console.log('Using namespace page: %s → %s', config.name, effectivePageId);
+  }
+
   await writePid(dirPath);
 
   let state: SyncState;
   try {
-    state = await startupSync(dirPath, pageId);
+    state = await startupSync(dirPath, effectivePageId);
   } catch (err) {
     console.error('Startup sync failed:', err);
     await cleanPid(dirPath);
@@ -172,6 +178,7 @@ const start = async (
         : []),
       ...(flags.port ? ['--port', String(flags.port)] : []),
       ...(flags.config ? ['--config', flags.config] : []),
+      ...(flags.name ? ['--name', flags.name] : []),
     ],
     {
       detached: true,
@@ -214,7 +221,7 @@ const run = async (): Promise<void> => {
     }
   } else {
     console.error(
-      'Usage: notion-sync <path-to-dir> <page-id> [--api-secret <secret>] [--port <port>] [--config <path>]',
+      'Usage: notion-sync <path-to-dir> <page-id> [--api-secret <secret>] [--port <port>] [--config <path>] [--name <namespace>]',
     );
     console.error('       notion-sync list');
     console.error('       notion-sync stop <id>');

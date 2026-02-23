@@ -32,6 +32,16 @@ import { syncLock } from './sync-lock.js';
 
 import type { SyncState, FileState } from './state.js';
 
+export const resolveNamespacePage = async (
+  rootPageId: string,
+  name: string,
+): Promise<string> => {
+  const children = await getChildPages(rootPageId);
+  const existing = children.find((c) => c.title === name);
+  if (existing) return existing.id;
+  return createPage(rootPageId, name, []);
+};
+
 const DEBUG_LOG = resolve(
   homedir(),
   '.notion-sync',

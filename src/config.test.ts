@@ -65,6 +65,12 @@ describe('parseCliFlags', () => {
     expect(result.flags.daemon).toBe(true);
   });
 
+  it('extracts --name value', () => {
+    const result = parseCliFlags(['--name', 'dirA']);
+
+    expect(result.flags.name).toBe('dirA');
+  });
+
   it('returns empty flags and positional args when no flags given', () => {
     const result = parseCliFlags(['./notes', 'page-id-123']);
 
@@ -189,6 +195,38 @@ describe('resolveConfig', () => {
     ]);
 
     expect(config.port).toBe(4648);
+  });
+
+  it('passes name flag through to resolved config', async () => {
+    mockReadFile.mockResolvedValueOnce(
+      JSON.stringify({
+        apiSecret: 'secret_abc',
+      }),
+    );
+
+    const config = await resolveConfig(
+      {
+        name: 'dirA',
+      },
+      ['./notes', 'root-page-id'],
+    );
+
+    expect(config.name).toBe('dirA');
+  });
+
+  it('omits name when not provided', async () => {
+    mockReadFile.mockResolvedValueOnce(
+      JSON.stringify({
+        apiSecret: 'secret_abc',
+      }),
+    );
+
+    const config = await resolveConfig({}, [
+      './notes',
+      'root-page-id',
+    ]);
+
+    expect(config.name).toBeUndefined();
   });
 
   it('throws when apiSecret missing from all sources', async () => {
