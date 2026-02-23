@@ -8,19 +8,34 @@ import { diffBlocks, getBlockContent } from './diff.js';
 import { enqueue } from './queue.js';
 import { sleep } from './sleep.js';
 
-const DEBUG_LOG = resolve(homedir(), '.notion-sync', 'debug.jsonl');
+const DEBUG_LOG = resolve(
+  homedir(),
+  '.notion-sync',
+  'debug.jsonl',
+);
 
 const debugLog = (entry: Record<string, unknown>): void => {
   const line = JSON.stringify({
     ts: new Date().toISOString(),
     ...entry,
   });
-  try { appendFileSync(DEBUG_LOG, `${line}\n`); } catch { /* ignore */ }
+  try {
+    appendFileSync(DEBUG_LOG, `${line}\n`);
+  } catch {
+    /* ignore */
+  }
 };
 
-const notion = new Client({
+// eslint-disable-next-line import/no-mutable-exports -- setApiSecret needs reassignment
+let notion = new Client({
   auth: process.env.NOTION_SYNC_API_SECRET,
 });
+
+export const setApiSecret = (secret: string): void => {
+  notion = new Client({
+    auth: secret,
+  });
+};
 
 const withRetry = async <T>(
   fn: () => Promise<T>,
@@ -62,6 +77,7 @@ export const getChildPages = async (
 
   do {
     const startCursor = cursor;
+    // eslint-disable-next-line no-loop-func -- notion ref is intentional
     const response = await enqueue(() => withRetry(() => notion.blocks.children.list({
       block_id: pageId,
       start_cursor: startCursor,
@@ -119,7 +135,9 @@ export const createPage = async (
   return response.id;
 };
 
-type AppendChildren = Parameters<typeof notion.blocks.children.append>[0]['children'];
+type AppendChildren = Parameters<
+  typeof notion.blocks.children.append
+>[0]['children']
 
 export const updatePageContent = async (
   pageId: string,
@@ -134,12 +152,21 @@ export const updatePageContent = async (
     pageId,
     newBlockCount: blocks.length,
     newBlocks: blocks.map((b) => getBlockContent(b)),
-    stack: new Error().stack?.split('\n').slice(1, 5).map((s) => s.trim()),
+    stack: (() => {
+      const s = new Error().stack;
+      return s
+        ? s
+          .split('\n')
+          .slice(1, 5)
+          .map((l) => l.trim())
+        : [];
+    })(),
   });
 
   if (blocks.length === 0) {
     debugLog({
-      event: 'updatePageContent:empty', callId,
+      event: 'updatePageContent:empty',
+      callId,
     });
     return;
   }
@@ -150,6 +177,7 @@ export const updatePageContent = async (
 
   do {
     const startCursor = cursor;
+    // eslint-disable-next-line no-loop-func -- notion ref is intentional
     const response = await enqueue(() => withRetry(() => notion.blocks.children.list({
       block_id: pageId,
       ...(startCursor
@@ -184,22 +212,28 @@ export const updatePageContent = async (
     ops: ops.map((op) => {
       if (op.type === 'keep') {
         return {
-          type: 'keep', blockId: op.blockId,
+          type: 'keep',
+          blockId: op.blockId,
         };
       }
       if (op.type === 'delete') {
         return {
-          type: 'delete', blockId: op.blockId,
+          type: 'delete',
+          blockId: op.blockId,
         };
       }
       if (op.type === 'update') {
         return {
-          type: 'update', blockId: op.blockId, new: getBlockContent(op.newBlock),
+          type: 'update',
+          blockId: op.blockId,
+          new: getBlockContent(op.newBlock),
         };
       }
       if (op.type === 'insert') {
         return {
-          type: 'insert', afterBlockId: op.afterBlockId, new: getBlockContent(op.newBlock),
+          type: 'insert',
+          afterBlockId: op.afterBlockId,
+          new: getBlockContent(op.newBlock),
         };
       }
       return op;
@@ -216,12 +250,13 @@ export const updatePageContent = async (
 
   if (hasLeadingInsert) {
     debugLog({
-      event: 'updatePageContent:leadingInsertFallback', callId,
+      event: 'updatePageContent:leadingInsertFallback',
+      callId,
     });
     // Delete all existing blocks, then append the full desired state
     await existingBlocks.reduce(
       (chain: Promise<void>, block) => chain.then(async () => {
-        const { id } = (block as { id: string });
+        const { id } = block as { id: string };
         if (id) {
           await enqueue(() => withRetry(() => notion.blocks.delete({
             block_id: id,
@@ -264,7 +299,10 @@ export const updatePageContent = async (
         lastInsertedId = null;
       } else if (op.type === 'update') {
         lastInsertedId = null;
-        const block = op.newBlock as Record<string, unknown>;
+        const block = op.newBlock as Record<
+            string,
+            unknown
+          >;
         const blockType = block.type as string;
         await enqueue(() => withRetry(() => notion.blocks.update({
           block_id: op.blockId,
@@ -278,9 +316,7 @@ export const updatePageContent = async (
           after: afterId ?? undefined,
         })));
         const created = response.results[0];
-        lastInsertedId = created && 'id' in created
-          ? created.id
-          : null;
+        lastInsertedId = created && 'id' in created ? created.id : null;
       }
     }),
     Promise.resolve(),

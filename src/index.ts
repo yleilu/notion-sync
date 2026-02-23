@@ -17,11 +17,16 @@ import {
   cleanPidById,
   listDaemons,
 } from './state.js';
-import { startupSync } from './sync.js';
+import { startupSync, syncFromNotion } from './sync.js';
 import { startWatcher } from './watcher.js';
-import { startPoller } from './poller.js';
+import { parseCliFlags, resolveConfig } from './config.js';
+import { setApiSecret } from './notion.js';
+import { startWebhookServer } from './webhook.js';
 
 import type { SyncState } from './state.js';
+import type { Server } from 'http';
+
+let flags: ReturnType<typeof parseCliFlags>['flags'];
 
 const list = async (): Promise<void> => {
   const daemons = await listDaemons();
@@ -79,6 +84,12 @@ const daemonChild = async (
   dirPath: string,
   pageId: string,
 ): Promise<void> => {
+  const config = await resolveConfig(flags, [
+    dirPath,
+    pageId,
+  ]);
+  setApiSecret(config.apiSecret);
+
   await writePid(dirPath);
 
   let state: SyncState;
@@ -93,11 +104,14 @@ const daemonChild = async (
   console.log('Startup sync complete');
 
   const watcher = startWatcher(dirPath, state);
-  const poller = startPoller(dirPath, state);
+  const server: Server = await startWebhookServer({
+    port: config.port,
+    onNotification: () => syncFromNotion(dirPath, state),
+  });
 
   const shutdown = async (): Promise<void> => {
     console.log('\nShutting down...');
-    clearInterval(poller);
+    server.close();
     await watcher.close();
     await saveState(resolve(dirPath), state);
     await cleanPid(dirPath);
@@ -117,11 +131,6 @@ const start = async (
 
   if (!existsSync(dirPath)) {
     console.error('Directory does not exist: %s', dirPath);
-    process.exit(1);
-  }
-
-  if (!process.env.NOTION_SYNC_API_SECRET) {
-    console.error('Missing NOTION_SYNC_API_SECRET env var');
     process.exit(1);
   }
 
@@ -158,6 +167,11 @@ const start = async (
       dirArg,
       pageId,
       '--daemon',
+      ...(flags.apiSecret
+        ? ['--api-secret', flags.apiSecret]
+        : []),
+      ...(flags.port ? ['--port', String(flags.port)] : []),
+      ...(flags.config ? ['--config', flags.config] : []),
     ],
     {
       detached: true,
@@ -176,32 +190,39 @@ const start = async (
   console.log('Log: %s', logPath);
 };
 
-const args = process.argv.slice(2);
-const isDaemon = args.includes('--daemon');
-const positional = args.filter((a) => a !== '--daemon');
+const parsed = parseCliFlags(process.argv.slice(2));
+flags = parsed.flags;
+const { positional } = parsed;
 
-if (positional.at(0) === 'list') {
-  list();
-} else if (positional.at(0) === 'stop') {
-  if (!positional.at(1)) {
-    console.error('Usage: notion-sync stop <id>');
+const run = async (): Promise<void> => {
+  if (positional[0] === 'list') {
+    await list();
+  } else if (positional[0] === 'stop') {
+    if (!positional[1]) {
+      console.error('Usage: notion-sync stop <id>');
+      process.exit(1);
+    }
+    await stop(positional[1]);
+  } else if (positional.length >= 2) {
+    if (flags.daemon) {
+      await daemonChild(
+        resolve(positional[0]),
+        positional[1],
+      );
+    } else {
+      await start(positional[0], positional[1]);
+    }
+  } else {
+    console.error(
+      'Usage: notion-sync <path-to-dir> <page-id> [--api-secret <secret>] [--port <port>] [--config <path>]',
+    );
+    console.error('       notion-sync list');
+    console.error('       notion-sync stop <id>');
     process.exit(1);
   }
-  stop(positional.at(1)!);
-} else if (positional.length >= 2) {
-  if (isDaemon) {
-    daemonChild(
-      resolve(positional.at(0)!),
-      positional.at(1)!,
-    );
-  } else {
-    start(positional.at(0)!, positional.at(1)!);
-  }
-} else {
-  console.error(
-    'Usage: notion-sync <path-to-dir> <page-id>',
-  );
-  console.error('       notion-sync list');
-  console.error('       notion-sync stop <id>');
+};
+
+run().catch((err) => {
+  console.error(err);
   process.exit(1);
-}
+});
