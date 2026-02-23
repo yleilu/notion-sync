@@ -83,6 +83,7 @@ describe('getStateDir', () => {
 
 describe('loadState', () => {
   const sampleState = {
+    statePageId: TEST_PAGE_ID,
     rootPageId: 'page-123',
     dirPath: TEST_DIR,
     files: {},
@@ -119,6 +120,7 @@ describe('loadState', () => {
 
 describe('saveState', () => {
   const sampleState = {
+    statePageId: 'state-456',
     rootPageId: 'page-456',
     dirPath: TEST_DIR,
     files: {},
@@ -130,7 +132,7 @@ describe('saveState', () => {
 
     const stateDir = resolve(
       BASE_DIR,
-      expectedHash(TEST_DIR, sampleState.rootPageId),
+      expectedHash(TEST_DIR, sampleState.statePageId),
     );
     expect(mockMkdir).toHaveBeenCalledWith(stateDir, {
       recursive: true,

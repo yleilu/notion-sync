@@ -354,7 +354,7 @@ export const archivePage = async (
 
 export const getPageMeta = async (
   pageId: string,
-): Promise<{ lastEditedTime: string }> => {
+): Promise<{ lastEditedTime: string; archived: boolean }> => {
   const page = await enqueue(() => withRetry(() => notion.pages.retrieve({
     page_id: pageId,
   })));
@@ -367,6 +367,7 @@ export const getPageMeta = async (
 
   return {
     lastEditedTime: page.last_edited_time,
+    archived: 'archived' in page && page.archived === true,
   };
 };
 

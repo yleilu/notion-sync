@@ -909,9 +909,10 @@ describe('archivePage', () => {
 // ── getPageMeta ─────────────────────────────────────────────────────────────
 
 describe('getPageMeta', () => {
-  it('returns lastEditedTime from page retrieve', async () => {
+  it('returns lastEditedTime and archived from page retrieve', async () => {
     mockPagesRetrieve.mockResolvedValueOnce({
       last_edited_time: '2025-01-15T10:30:00.000Z',
+      archived: false,
     });
 
     const meta = await getPageMeta(
@@ -920,9 +921,26 @@ describe('getPageMeta', () => {
 
     expect(meta).toEqual({
       lastEditedTime: '2025-01-15T10:30:00.000Z',
+      archived: false,
     });
     expect(mockPagesRetrieve).toHaveBeenCalledWith({
       page_id: '00000000-0000-0000-0000-000000000abc',
+    });
+  });
+
+  it('returns archived=true for trashed pages', async () => {
+    mockPagesRetrieve.mockResolvedValueOnce({
+      last_edited_time: '2025-01-15T10:30:00.000Z',
+      archived: true,
+    });
+
+    const meta = await getPageMeta(
+      '00000000-0000-0000-0000-000000000abc',
+    );
+
+    expect(meta).toEqual({
+      lastEditedTime: '2025-01-15T10:30:00.000Z',
+      archived: true,
     });
   });
 

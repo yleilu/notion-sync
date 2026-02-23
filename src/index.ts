@@ -94,11 +94,11 @@ const daemonChild = async (
   const effectivePageId = await resolveNamespacePage(pageId, namespaceName);
   console.log('Using namespace page: %s → %s', namespaceName, effectivePageId);
 
-  await writePid(dirPath, effectivePageId);
+  await writePid(dirPath, pageId);
 
   let state: SyncState;
   try {
-    state = await startupSync(dirPath, effectivePageId);
+    state = await startupSync(dirPath, effectivePageId, pageId);
     process.send?.({
       type: 'sync-done',
     });
@@ -108,7 +108,7 @@ const daemonChild = async (
       type: 'sync-error',
       error: String(err),
     });
-    await cleanPid(dirPath, effectivePageId);
+    await cleanPid(dirPath, pageId);
     process.exit(1);
   }
 
@@ -125,7 +125,7 @@ const daemonChild = async (
     server.close();
     await watcher.close();
     await saveState(resolve(dirPath), state);
-    await cleanPid(dirPath, effectivePageId);
+    await cleanPid(dirPath, pageId);
     console.log('Saved state and exited');
     process.exit(0);
   };

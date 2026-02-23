@@ -39,6 +39,7 @@ let syncFile: jest.Mock;
 let syncDeleteFile: jest.Mock;
 
 const state = {
+  statePageId: 'root-page-id',
   rootPageId: 'root-page-id',
   dirPath: '/test/dir',
   files: {},

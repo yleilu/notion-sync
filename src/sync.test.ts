@@ -225,6 +225,7 @@ describe('sync operations', () => {
         resolve(DIR),
         ROOT_PAGE,
       );
+      expect(state.statePageId).toBe(ROOT_PAGE);
       expect(state.rootPageId).toBe(ROOT_PAGE);
       expect(state.dirPath).toBe(resolve(DIR));
       expect(state.files['hello.md']).toEqual({
@@ -243,6 +244,7 @@ describe('sync operations', () => {
 
     it('skips unchanged files via fast mtime+size check', async () => {
       const existingState = {
+        statePageId: ROOT_PAGE,
         rootPageId: ROOT_PAGE,
         dirPath: resolve(DIR),
         files: {
@@ -290,6 +292,7 @@ describe('sync operations', () => {
 
     it('falls back to hash check when mtime differs', async () => {
       const existingState = {
+        statePageId: ROOT_PAGE,
         rootPageId: ROOT_PAGE,
         dirPath: resolve(DIR),
         files: {
@@ -337,6 +340,7 @@ describe('sync operations', () => {
 
     it('falls back to full check when state has no mtime/size (backwards compat)', async () => {
       const existingState = {
+        statePageId: ROOT_PAGE,
         rootPageId: ROOT_PAGE,
         dirPath: resolve(DIR),
         files: {
@@ -380,6 +384,7 @@ describe('sync operations', () => {
 
     it('pulls remote changes detected during startup catch-up', async () => {
       const existingState = {
+        statePageId: ROOT_PAGE,
         rootPageId: ROOT_PAGE,
         dirPath: resolve(DIR),
         files: {
@@ -437,6 +442,7 @@ describe('sync operations', () => {
 
     it('skips remote catch-up when Notion unchanged', async () => {
       const existingState = {
+        statePageId: ROOT_PAGE,
         rootPageId: ROOT_PAGE,
         dirPath: resolve(DIR),
         files: {
@@ -478,6 +484,7 @@ describe('sync operations', () => {
 
     it('archives removed files from state', async () => {
       const existingState = {
+        statePageId: ROOT_PAGE,
         rootPageId: ROOT_PAGE,
         dirPath: resolve(DIR),
         files: {
@@ -519,6 +526,7 @@ describe('sync operations', () => {
 
     it('prunes archived pages from state on startup', async () => {
       const existingState = {
+        statePageId: ROOT_PAGE,
         rootPageId: ROOT_PAGE,
         dirPath: resolve(DIR),
         files: {
@@ -662,6 +670,7 @@ describe('sync operations', () => {
   describe('syncFile', () => {
     it('creates new page when file not in state', async () => {
       const state: SyncState = {
+        statePageId: ROOT_PAGE,
         rootPageId: ROOT_PAGE,
         dirPath: resolve(DIR),
         files: {},
@@ -713,6 +722,7 @@ describe('sync operations', () => {
 
     it('updates existing page when hash differs', async () => {
       const state = {
+        statePageId: ROOT_PAGE,
         rootPageId: ROOT_PAGE,
         dirPath: resolve(DIR),
         files: {
@@ -767,6 +777,7 @@ describe('sync operations', () => {
 
     it('fast-skips when mtime+size match stored values', async () => {
       const state = {
+        statePageId: ROOT_PAGE,
         rootPageId: ROOT_PAGE,
         dirPath: resolve(DIR),
         files: {
@@ -797,6 +808,7 @@ describe('sync operations', () => {
 
     it('skips via hash when mtime differs but content unchanged', async () => {
       const state = {
+        statePageId: ROOT_PAGE,
         rootPageId: ROOT_PAGE,
         dirPath: resolve(DIR),
         files: {
@@ -830,6 +842,7 @@ describe('sync operations', () => {
   describe('syncDeleteFile', () => {
     it('archives page and removes from state', async () => {
       const state = {
+        statePageId: ROOT_PAGE,
         rootPageId: ROOT_PAGE,
         dirPath: resolve(DIR),
         files: {
@@ -860,6 +873,7 @@ describe('sync operations', () => {
 
     it('no-op when file not tracked in state', async () => {
       const state: SyncState = {
+        statePageId: ROOT_PAGE,
         rootPageId: ROOT_PAGE,
         dirPath: resolve(DIR),
         files: {},
@@ -877,6 +891,7 @@ describe('sync operations', () => {
   describe('syncFromNotion', () => {
     it('pulls changed content when lastEditedTime differs', async () => {
       const state = {
+        statePageId: ROOT_PAGE,
         rootPageId: ROOT_PAGE,
         dirPath: resolve(DIR),
         files: {
@@ -930,6 +945,7 @@ describe('sync operations', () => {
 
     it('skips unchanged files (same lastEditedTime)', async () => {
       const state = {
+        statePageId: ROOT_PAGE,
         rootPageId: ROOT_PAGE,
         dirPath: resolve(DIR),
         files: {
@@ -963,6 +979,7 @@ describe('sync operations', () => {
 
     it('handles errors per file without stopping others', async () => {
       const state = {
+        statePageId: ROOT_PAGE,
         rootPageId: ROOT_PAGE,
         dirPath: resolve(DIR),
         files: {
@@ -1064,6 +1081,7 @@ describe('sync operations', () => {
     it('updates existing page when file is inside a symlinked subdir', async () => {
       // Simulate state after startupSync tracked a file under symlinked dir "test"
       const state: SyncState = {
+        statePageId: ROOT_PAGE,
         rootPageId: ROOT_PAGE,
         dirPath: resolve(DIR),
         files: {

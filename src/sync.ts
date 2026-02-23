@@ -440,12 +440,14 @@ const pullNotionOnly = async (
 export const startupSync = async (
   dirPath: string,
   rootPageId: string,
+  statePageId: string = rootPageId,
 ): Promise<SyncState> => {
   const absDir = resolve(dirPath);
-  let state = await loadState(absDir, rootPageId);
+  let state = await loadState(absDir, statePageId);
 
   if (!state) {
     state = {
+      statePageId,
       rootPageId,
       dirPath: absDir,
       files: {},
@@ -458,6 +460,7 @@ export const startupSync = async (
     state.files = {};
     state.dirs = {};
   }
+  state.statePageId = statePageId;
 
   // Prune state entries whose Notion pages are archived or deleted
   await Object.entries(state.files).reduce(

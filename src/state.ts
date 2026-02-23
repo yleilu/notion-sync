@@ -23,6 +23,7 @@ export interface DirState {
 }
 
 export interface SyncState {
+  statePageId: string
   rootPageId: string
   dirPath: string
   files: Record<string, FileState>
@@ -63,7 +64,7 @@ export const saveState = async (
   dirPath: string,
   state: SyncState,
 ): Promise<void> => {
-  const dir = getStateDir(dirPath, state.rootPageId);
+  const dir = getStateDir(dirPath, state.statePageId);
   await mkdir(dir, {
     recursive: true,
   });
