@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { resolve } from 'path';
+import { resolve, basename } from 'path';
 import { fileURLToPath } from 'url';
 import { existsSync, openSync } from 'fs';
 import { spawn } from 'child_process';
@@ -90,19 +90,24 @@ const daemonChild = async (
   ]);
   setApiSecret(config.apiSecret);
 
-  let effectivePageId = pageId;
-  if (config.name) {
-    effectivePageId = await resolveNamespacePage(pageId, config.name);
-    console.log('Using namespace page: %s → %s', config.name, effectivePageId);
-  }
+  const namespaceName = config.name || basename(dirPath);
+  const effectivePageId = await resolveNamespacePage(pageId, namespaceName);
+  console.log('Using namespace page: %s → %s', namespaceName, effectivePageId);
 
   await writePid(dirPath);
 
   let state: SyncState;
   try {
     state = await startupSync(dirPath, effectivePageId);
+    process.send?.({
+      type: 'sync-done',
+    });
   } catch (err) {
     console.error('Startup sync failed:', err);
+    process.send?.({
+      type: 'sync-error',
+      error: String(err),
+    });
     await cleanPid(dirPath);
     process.exit(1);
   }
@@ -182,12 +187,10 @@ const start = async (
     ],
     {
       detached: true,
-      stdio: ['ignore', logFd, logFd],
+      stdio: ['ignore', logFd, logFd, 'ipc'],
       env: process.env,
     },
   );
-
-  child.unref();
 
   console.log(
     'Started notion-sync [%s] (PID %d)',
@@ -195,6 +198,43 @@ const start = async (
     child.pid,
   );
   console.log('Log: %s', logPath);
+  console.log('Waiting for startup sync...');
+
+  const SYNC_TIMEOUT = 5 * 60e3;
+
+  const cleanup = (): void => {
+    child.removeAllListeners('message');
+    child.removeAllListeners('exit');
+    try { child.disconnect(); } catch { /* already disconnected */ }
+    child.unref();
+  };
+
+  await new Promise<void>((res, rej) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      rej(new Error('Startup sync timed out after 5 minutes'));
+    }, SYNC_TIMEOUT);
+
+    child.once('message', (msg: unknown) => {
+      clearTimeout(timer);
+      const m = msg as { type: string; error?: string };
+      child.removeAllListeners('exit');
+      if (m.type === 'sync-error') {
+        rej(new Error(m.error || 'Startup sync failed'));
+      } else {
+        console.log('Startup sync complete');
+        res();
+      }
+    });
+
+    child.once('exit', (code) => {
+      clearTimeout(timer);
+      child.removeAllListeners('message');
+      rej(new Error(`Daemon exited unexpectedly (code ${code})`));
+    });
+  });
+
+  cleanup();
 };
 
 const parsed = parseCliFlags(process.argv.slice(2));

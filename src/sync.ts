@@ -494,8 +494,12 @@ export const startupSync = async (
   const { files, dirs } = await scanLocal(absDir);
 
   // Ensure dir pages exist (sequential — API rate limits)
+  let dirsSynced = 0;
+  const dirsTotal = dirs.length;
   await dirs.reduce(
     (chain, dir) => chain.then(async () => {
+      dirsSynced += 1;
+      console.log('[%d/%d] dir: %s', dirsSynced, dirsTotal, dir.relativePath);
       try {
         await ensureDirPage(
           dir.relativePath,
@@ -514,8 +518,12 @@ export const startupSync = async (
   );
 
   // Sync each file (sequential — API rate limits)
+  let filesSynced = 0;
+  const filesTotal = files.length;
   await files.reduce(
     (chain, file) => chain.then(async () => {
+      filesSynced += 1;
+      console.log('[%d/%d] %s', filesSynced, filesTotal, file.relativePath);
       try {
         await syncFile(file.absolutePath, absDir, state);
       } catch (err) {
@@ -528,6 +536,8 @@ export const startupSync = async (
     }),
     Promise.resolve(),
   );
+
+  console.log('Synced %d files (%d dirs)', files.length, dirs.length);
 
   // Catch up on remote changes made while daemon was down
   await Object.entries(state.files).reduce(
