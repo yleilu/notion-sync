@@ -45,7 +45,7 @@ const mockUpdatePageContent = jest
 const mockArchivePage = jest
   .fn<() => Promise<undefined>>()
   .mockResolvedValue(undefined);
-const mockGetPageMeta = jest.fn<() => Promise<{ lastEditedTime: string }>>();
+const mockGetPageMeta = jest.fn<() => Promise<{ lastEditedTime: string; archived: boolean }>>();
 
 jest.unstable_mockModule('./notion.js', () => ({
   getChildPages: mockGetChildPages,
@@ -209,10 +209,12 @@ describe('sync operations', () => {
       mockCreatePage.mockResolvedValueOnce('notion-page-1');
       mockGetPageMeta.mockResolvedValueOnce({
         lastEditedTime: '2026-02-22T01:00:00.000Z',
+        archived: false,
       });
       // Remote catch-up: same timestamp (just created)
       mockGetPageMeta.mockResolvedValueOnce({
         lastEditedTime: '2026-02-22T01:00:00.000Z',
+        archived: false,
       });
       // fetchNotionTree calls getChildPages for root
       mockGetChildPages.mockResolvedValueOnce([]);
@@ -255,6 +257,11 @@ describe('sync operations', () => {
         dirs: {},
       };
       mockLoadState.mockResolvedValueOnce(existingState);
+      // State validation: hello.md is alive
+      mockGetPageMeta.mockResolvedValueOnce({
+        lastEditedTime: '2026-02-21T00:00:00.000Z',
+        archived: false,
+      });
       mockReaddir.mockResolvedValueOnce([
         dirent('hello.md'),
       ]);
@@ -263,6 +270,7 @@ describe('sync operations', () => {
       // Remote catch-up: unchanged
       mockGetPageMeta.mockResolvedValueOnce({
         lastEditedTime: '2026-02-21T00:00:00.000Z',
+        archived: false,
       });
       // fetchNotionTree calls getChildPages for root
       mockGetChildPages.mockResolvedValueOnce([]);
@@ -296,6 +304,11 @@ describe('sync operations', () => {
         dirs: {},
       };
       mockLoadState.mockResolvedValueOnce(existingState);
+      // State validation: hello.md is alive
+      mockGetPageMeta.mockResolvedValueOnce({
+        lastEditedTime: '2026-02-21T00:00:00.000Z',
+        archived: false,
+      });
       mockReaddir.mockResolvedValueOnce([
         dirent('hello.md'),
       ]);
@@ -306,6 +319,7 @@ describe('sync operations', () => {
       // Remote catch-up: unchanged
       mockGetPageMeta.mockResolvedValueOnce({
         lastEditedTime: '2026-02-21T00:00:00.000Z',
+        archived: false,
       });
       // fetchNotionTree calls getChildPages for root
       mockGetChildPages.mockResolvedValueOnce([]);
@@ -335,6 +349,11 @@ describe('sync operations', () => {
         dirs: {},
       };
       mockLoadState.mockResolvedValueOnce(existingState);
+      // State validation: hello.md is alive
+      mockGetPageMeta.mockResolvedValueOnce({
+        lastEditedTime: '2026-02-21T00:00:00.000Z',
+        archived: false,
+      });
       mockReaddir.mockResolvedValueOnce([
         dirent('hello.md'),
       ]);
@@ -345,6 +364,7 @@ describe('sync operations', () => {
       // Remote catch-up: unchanged
       mockGetPageMeta.mockResolvedValueOnce({
         lastEditedTime: '2026-02-21T00:00:00.000Z',
+        archived: false,
       });
       // fetchNotionTree
       mockGetChildPages.mockResolvedValueOnce([]);
@@ -374,6 +394,11 @@ describe('sync operations', () => {
         dirs: {},
       };
       mockLoadState.mockResolvedValueOnce(existingState);
+      // State validation: doc.md is alive
+      mockGetPageMeta.mockResolvedValueOnce({
+        lastEditedTime: '2026-02-20T00:00:00.000Z',
+        archived: false,
+      });
       // scanLocal: file exists
       mockReaddir.mockResolvedValueOnce([
         dirent('doc.md'),
@@ -383,6 +408,7 @@ describe('sync operations', () => {
       // Remote catch-up: Notion changed
       mockGetPageMeta.mockResolvedValueOnce({
         lastEditedTime: '2026-02-22T05:00:00.000Z',
+        archived: false,
       });
       mockBlocksToMd.mockResolvedValueOnce('# Updated from Notion');
       mockHashContent.mockReturnValueOnce('new-notion-hash');
@@ -425,6 +451,11 @@ describe('sync operations', () => {
         dirs: {},
       };
       mockLoadState.mockResolvedValueOnce(existingState);
+      // State validation: doc.md is alive
+      mockGetPageMeta.mockResolvedValueOnce({
+        lastEditedTime: '2026-02-21T00:00:00.000Z',
+        archived: false,
+      });
       mockReaddir.mockResolvedValueOnce([
         dirent('doc.md'),
       ]);
@@ -433,6 +464,7 @@ describe('sync operations', () => {
       // Remote catch-up: same timestamp
       mockGetPageMeta.mockResolvedValueOnce({
         lastEditedTime: '2026-02-21T00:00:00.000Z',
+        archived: false,
       });
       // fetchNotionTree
       mockGetChildPages.mockResolvedValueOnce([]);
@@ -460,11 +492,17 @@ describe('sync operations', () => {
         dirs: {},
       };
       mockLoadState.mockResolvedValueOnce(existingState);
+      // State validation: deleted.md is still alive on Notion
+      mockGetPageMeta.mockResolvedValueOnce({
+        lastEditedTime: '2026-02-20T00:00:00.000Z',
+        archived: false,
+      });
       // scanLocal returns empty — no local files
       mockReaddir.mockResolvedValueOnce([]);
       // Remote catch-up for tracked file (will be archived after)
       mockGetPageMeta.mockResolvedValueOnce({
         lastEditedTime: '2026-02-20T00:00:00.000Z',
+        archived: false,
       });
       // fetchNotionTree calls getChildPages for root
       mockGetChildPages.mockResolvedValueOnce([]);
@@ -476,6 +514,147 @@ describe('sync operations', () => {
       );
       expect(state.files['deleted.md']).toBeUndefined();
       expect(mockSaveState).toHaveBeenCalled();
+    });
+
+    it('prunes archived pages from state on startup', async () => {
+      const existingState = {
+        rootPageId: ROOT_PAGE,
+        dirPath: resolve(DIR),
+        files: {
+          'alive.md': {
+            notionPageId: 'alive-page',
+            localHash: 'hash-alive',
+            localMtime: 1000,
+            localSize: 100,
+            notionLastEdited: '2026-02-21T00:00:00.000Z',
+            lastSyncedAt: '2026-02-21T00:00:00.000Z',
+          },
+          'trashed.md': {
+            notionPageId: 'trashed-page',
+            localHash: 'hash-trashed',
+            localMtime: 1000,
+            localSize: 50,
+            notionLastEdited: '2026-02-20T00:00:00.000Z',
+            lastSyncedAt: '2026-02-20T00:00:00.000Z',
+          },
+        },
+        dirs: {
+          subdir: {
+            notionPageId: 'trashed-dir',
+          },
+        },
+      };
+      mockLoadState.mockResolvedValueOnce(existingState);
+      // State validation: alive.md is alive
+      mockGetPageMeta.mockResolvedValueOnce({
+        lastEditedTime: '2026-02-21T00:00:00.000Z',
+        archived: false,
+      });
+      // State validation: trashed.md is archived
+      mockGetPageMeta.mockResolvedValueOnce({
+        lastEditedTime: '2026-02-20T00:00:00.000Z',
+        archived: true,
+      });
+      // State validation: subdir is 404
+      mockGetPageMeta.mockRejectedValueOnce({
+        status: 404,
+        message: 'Not found',
+      });
+      // scanLocal: alive.md exists locally
+      mockReaddir.mockResolvedValueOnce([
+        dirent('alive.md'),
+      ]);
+      // syncFile fast skip for alive.md
+      mockStat.mockResolvedValueOnce(fakeStat(1000, 100));
+      // Remote catch-up for alive.md: unchanged
+      mockGetPageMeta.mockResolvedValueOnce({
+        lastEditedTime: '2026-02-21T00:00:00.000Z',
+        archived: false,
+      });
+      // fetchNotionTree
+      mockGetChildPages.mockResolvedValueOnce([]);
+
+      const state = await startupSync(DIR, ROOT_PAGE);
+
+      // trashed.md should be pruned from state
+      expect(state.files['trashed.md']).toBeUndefined();
+      // alive.md should remain
+      expect(state.files['alive.md']).toBeDefined();
+      expect(state.files['alive.md'].notionPageId).toBe(
+        'alive-page',
+      );
+      // subdir should be pruned from state
+      expect(state.dirs.subdir).toBeUndefined();
+    });
+
+    it('continues syncing remaining files when one file fails', async () => {
+      mockLoadState.mockResolvedValueOnce(null);
+      // scanLocal: root has two md files
+      mockReaddir.mockResolvedValueOnce([
+        dirent('aaa.md'),
+        dirent('bbb.md'),
+      ]);
+      // syncFile for aaa.md: stat succeeds, readFile succeeds, then createPage throws
+      mockStat.mockResolvedValueOnce(fakeStat(2000, 50));
+      mockReadFile.mockResolvedValueOnce('# AAA');
+      mockHashContent.mockReturnValueOnce('hash-aaa');
+      mockMdToBlocks.mockReturnValueOnce([
+        {
+          type: 'paragraph',
+        },
+      ]);
+      mockGetChildPages.mockResolvedValueOnce([]);
+      mockCreatePage.mockRejectedValueOnce(
+        new Error('Notion API rate limit'),
+      );
+      // syncFile for bbb.md: succeeds normally
+      mockStat.mockResolvedValueOnce(fakeStat(3000, 60));
+      mockReadFile.mockResolvedValueOnce('# BBB');
+      mockHashContent.mockReturnValueOnce('hash-bbb');
+      mockMdToBlocks.mockReturnValueOnce([
+        {
+          type: 'heading',
+        },
+      ]);
+      mockGetChildPages.mockResolvedValueOnce([]);
+      mockCreatePage.mockResolvedValueOnce('notion-bbb');
+      mockGetPageMeta.mockResolvedValueOnce({
+        lastEditedTime: '2026-02-22T01:00:00.000Z',
+        archived: false,
+      });
+      // Remote catch-up for bbb.md (only tracked file)
+      mockGetPageMeta.mockResolvedValueOnce({
+        lastEditedTime: '2026-02-22T01:00:00.000Z',
+        archived: false,
+      });
+      // fetchNotionTree
+      mockGetChildPages.mockResolvedValueOnce([]);
+
+      const consoleSpy = jest
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+
+      const state = await startupSync(DIR, ROOT_PAGE);
+
+      // aaa.md should NOT be in state (failed)
+      expect(state.files['aaa.md']).toBeUndefined();
+      // bbb.md SHOULD be in state (succeeded despite earlier failure)
+      expect(state.files['bbb.md']).toEqual({
+        notionPageId: 'notion-bbb',
+        localHash: 'hash-bbb',
+        localMtime: 3000,
+        localSize: 60,
+        notionLastEdited: '2026-02-22T01:00:00.000Z',
+        lastSyncedAt: NOW,
+      });
+      expect(consoleSpy).toHaveBeenCalledWith(
+        'Error syncing %s:',
+        'aaa.md',
+        expect.any(Error),
+      );
+      expect(mockSaveState).toHaveBeenCalled();
+
+      consoleSpy.mockRestore();
     });
   });
 
@@ -503,6 +682,7 @@ describe('sync operations', () => {
       );
       mockGetPageMeta.mockResolvedValueOnce({
         lastEditedTime: '2026-02-22T02:00:00.000Z',
+        archived: false,
       });
 
       await syncFile(filePath, DIR, state);
@@ -558,6 +738,7 @@ describe('sync operations', () => {
       ]);
       mockGetPageMeta.mockResolvedValueOnce({
         lastEditedTime: '2026-02-22T03:00:00.000Z',
+        archived: false,
       });
 
       await syncFile(filePath, DIR, state);
@@ -712,6 +893,7 @@ describe('sync operations', () => {
 
       mockGetPageMeta.mockResolvedValueOnce({
         lastEditedTime: '2026-02-22T05:00:00.000Z',
+        archived: false,
       });
       mockBlocksToMd.mockResolvedValueOnce(
         '# Updated from Notion',
@@ -764,6 +946,7 @@ describe('sync operations', () => {
 
       mockGetPageMeta.mockResolvedValueOnce({
         lastEditedTime: '2026-02-21T00:00:00.000Z',
+        archived: false,
       });
 
       await syncFromNotion(DIR, state);
@@ -810,6 +993,7 @@ describe('sync operations', () => {
         // Second file succeeds but unchanged
         .mockResolvedValueOnce({
           lastEditedTime: '2026-02-20T00:00:00.000Z',
+          archived: false,
         });
 
       const consoleSpy = jest
@@ -913,6 +1097,7 @@ describe('sync operations', () => {
       ]);
       mockGetPageMeta.mockResolvedValueOnce({
         lastEditedTime: '2026-02-22T05:00:00.000Z',
+        archived: false,
       });
 
       await syncFile(absPath, DIR, state);

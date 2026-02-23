@@ -453,24 +453,79 @@ export const startupSync = async (
     };
   }
 
-  state.rootPageId = rootPageId;
+  if (state.rootPageId !== rootPageId) {
+    state.rootPageId = rootPageId;
+    state.files = {};
+    state.dirs = {};
+  }
+
+  // Prune state entries whose Notion pages are archived or deleted
+  await Object.entries(state.files).reduce(
+    (chain, [relPath, fileState]) => chain.then(async () => {
+      try {
+        const meta = await getPageMeta(fileState.notionPageId);
+        if (meta.archived) {
+          console.log('Pruning archived file: %s', relPath);
+          delete state.files[relPath];
+        }
+      } catch {
+        console.log('Pruning deleted file: %s', relPath);
+        delete state.files[relPath];
+      }
+    }),
+    Promise.resolve(),
+  );
+  await Object.entries(state.dirs).reduce(
+    (chain, [dirRelPath, dirState]) => chain.then(async () => {
+      try {
+        const meta = await getPageMeta(dirState.notionPageId);
+        if (meta.archived) {
+          console.log('Pruning archived dir: %s', dirRelPath);
+          delete state.dirs[dirRelPath];
+        }
+      } catch {
+        console.log('Pruning deleted dir: %s', dirRelPath);
+        delete state.dirs[dirRelPath];
+      }
+    }),
+    Promise.resolve(),
+  );
+
   const { files, dirs } = await scanLocal(absDir);
 
   // Ensure dir pages exist (sequential — API rate limits)
   await dirs.reduce(
     (chain, dir) => chain.then(async () => {
-      await ensureDirPage(
-        dir.relativePath,
-        rootPageId,
-        state,
-      );
+      try {
+        await ensureDirPage(
+          dir.relativePath,
+          rootPageId,
+          state,
+        );
+      } catch (err) {
+        console.error(
+          'Error ensuring dir %s:',
+          dir.relativePath,
+          err,
+        );
+      }
     }),
     Promise.resolve(),
   );
 
   // Sync each file (sequential — API rate limits)
   await files.reduce(
-    (chain, file) => chain.then(() => syncFile(file.absolutePath, absDir, state)),
+    (chain, file) => chain.then(async () => {
+      try {
+        await syncFile(file.absolutePath, absDir, state);
+      } catch (err) {
+        console.error(
+          'Error syncing %s:',
+          file.relativePath,
+          err,
+        );
+      }
+    }),
     Promise.resolve(),
   );
 
@@ -478,8 +533,13 @@ export const startupSync = async (
   await Object.entries(state.files).reduce(
     (chain, [relPath, fileState]) => chain.then(async () => {
       try {
-        const { lastEditedTime } = await getPageMeta(fileState.notionPageId);
-        if (lastEditedTime !== fileState.notionLastEdited) {
+        const meta = await getPageMeta(fileState.notionPageId);
+        if (meta.archived) {
+          console.log('Remote archived: %s', relPath);
+          delete state.files[relPath];
+          return;
+        }
+        if (meta.lastEditedTime !== fileState.notionLastEdited) {
           console.log('Notion changed: %s', relPath);
           const md = await blocksToMd(fileState.notionPageId);
           const absFile = resolve(absDir, relPath);
@@ -493,7 +553,7 @@ export const startupSync = async (
           state.files[relPath] = buildFileState(
             fileState.notionPageId,
             hashContent(md),
-            lastEditedTime,
+            meta.lastEditedTime,
             fileStat.mtimeMs,
             fileStat.size,
           );
@@ -513,8 +573,12 @@ export const startupSync = async (
   const prePullFileKeys = new Set(Object.keys(state.files));
 
   // Discover Notion-only pages and pull them locally
-  const notionTree = await fetchNotionTree(rootPageId);
-  await pullNotionOnly(notionTree, '', absDir, state);
+  try {
+    const notionTree = await fetchNotionTree(rootPageId);
+    await pullNotionOnly(notionTree, '', absDir, state);
+  } catch (err) {
+    console.error('Error pulling Notion-only pages:', err);
+  }
 
   // Archive: only files that were already tracked AND deleted locally
   const localPaths = new Set(files.map((f) => f.relativePath));
@@ -524,9 +588,17 @@ export const startupSync = async (
   );
   await removedEntries.reduce(
     (chain, [relPath, fileState]) => chain.then(async () => {
-      console.log('Archiving: %s', relPath);
-      await archivePage(fileState.notionPageId);
-      delete state.files[relPath];
+      try {
+        console.log('Archiving: %s', relPath);
+        await archivePage(fileState.notionPageId);
+        delete state.files[relPath];
+      } catch (err) {
+        console.error(
+          'Error archiving %s:',
+          relPath,
+          err,
+        );
+      }
     }),
     Promise.resolve(),
   );
