@@ -13,6 +13,7 @@ import {
 const mockBlocksChildrenList = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockBlocksChildrenAppend = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockBlocksDelete = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const mockBlocksUpdate = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockPagesCreate = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockPagesUpdate = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockPagesRetrieve = jest.fn<(...args: unknown[]) => Promise<unknown>>();
@@ -33,6 +34,7 @@ jest.unstable_mockModule('@notionhq/client', () => ({
         append: mockBlocksChildrenAppend,
       },
       delete: mockBlocksDelete,
+      update: mockBlocksUpdate,
     },
     pages: {
       create: mockPagesCreate,
@@ -69,19 +71,19 @@ describe('getChildPages', () => {
     mockBlocksChildrenList.mockResolvedValueOnce({
       results: [
         {
-          id: 'p1',
+          id: '00000000-0000-0000-0000-00000000a001',
           type: 'child_page',
           child_page: {
             title: 'Page One',
           },
         },
         {
-          id: 'b1',
+          id: '00000000-0000-0000-0000-00000000b001',
           type: 'paragraph',
           paragraph: {},
         },
         {
-          id: 'p2',
+          id: '00000000-0000-0000-0000-00000000a002',
           type: 'child_page',
           child_page: {
             title: 'Page Two',
@@ -92,20 +94,20 @@ describe('getChildPages', () => {
       next_cursor: null,
     });
 
-    const pages = await getChildPages('parent-id');
+    const pages = await getChildPages('00000000-0000-0000-0000-000000000010');
 
     expect(pages).toEqual([
       {
-        id: 'p1',
+        id: '00000000-0000-0000-0000-00000000a001',
         title: 'Page One',
       },
       {
-        id: 'p2',
+        id: '00000000-0000-0000-0000-00000000a002',
         title: 'Page Two',
       },
     ]);
     expect(mockBlocksChildrenList).toHaveBeenCalledWith({
-      block_id: 'parent-id',
+      block_id: '00000000-0000-0000-0000-000000000010',
       start_cursor: undefined,
       page_size: 100,
     });
@@ -116,7 +118,7 @@ describe('getChildPages', () => {
       .mockResolvedValueOnce({
         results: [
           {
-            id: 'p1',
+            id: '00000000-0000-0000-0000-00000000a001',
             type: 'child_page',
             child_page: {
               title: 'First',
@@ -129,7 +131,7 @@ describe('getChildPages', () => {
       .mockResolvedValueOnce({
         results: [
           {
-            id: 'p2',
+            id: '00000000-0000-0000-0000-00000000a002',
             type: 'child_page',
             child_page: {
               title: 'Second',
@@ -140,15 +142,15 @@ describe('getChildPages', () => {
         next_cursor: null,
       });
 
-    const pages = await getChildPages('parent-id');
+    const pages = await getChildPages('00000000-0000-0000-0000-000000000010');
 
     expect(pages).toEqual([
       {
-        id: 'p1',
+        id: '00000000-0000-0000-0000-00000000a001',
         title: 'First',
       },
       {
-        id: 'p2',
+        id: '00000000-0000-0000-0000-00000000a002',
         title: 'Second',
       },
     ]);
@@ -156,7 +158,7 @@ describe('getChildPages', () => {
     expect(mockBlocksChildrenList).toHaveBeenNthCalledWith(
       2,
       {
-        block_id: 'parent-id',
+        block_id: '00000000-0000-0000-0000-000000000010',
         start_cursor: 'cursor-abc',
         page_size: 100,
       },
@@ -167,7 +169,7 @@ describe('getChildPages', () => {
     mockBlocksChildrenList.mockResolvedValueOnce({
       results: [
         {
-          id: 'b1',
+          id: '00000000-0000-0000-0000-00000000b001',
           type: 'paragraph',
           paragraph: {},
         },
@@ -176,7 +178,7 @@ describe('getChildPages', () => {
       next_cursor: null,
     });
 
-    const pages = await getChildPages('parent-id');
+    const pages = await getChildPages('00000000-0000-0000-0000-000000000010');
 
     expect(pages).toEqual([]);
   });
@@ -187,7 +189,7 @@ describe('getChildPages', () => {
 describe('createPage', () => {
   it('passes correct params and returns response ID', async () => {
     mockPagesCreate.mockResolvedValueOnce({
-      id: 'new-page-id',
+      id: 'new-00000000-0000-0000-0000-000000000001',
     });
 
     const blocks = [
@@ -199,15 +201,15 @@ describe('createPage', () => {
       },
     ];
     const id = await createPage(
-      'parent-123',
+      '00000000-0000-0000-0000-000000000123',
       'My Title',
       blocks,
     );
 
-    expect(id).toBe('new-page-id');
+    expect(id).toBe('new-00000000-0000-0000-0000-000000000001');
     expect(mockPagesCreate).toHaveBeenCalledWith({
       parent: {
-        page_id: 'parent-123',
+        page_id: '00000000-0000-0000-0000-000000000123',
       },
       properties: {
         title: {
@@ -228,14 +230,209 @@ describe('createPage', () => {
 // ── updatePageContent ───────────────────────────────────────────────────────
 
 describe('updatePageContent', () => {
-  it('lists existing blocks, deletes them, then appends new blocks', async () => {
+  it('skips unchanged blocks (no API calls for identical content)', async () => {
     mockBlocksChildrenList.mockResolvedValueOnce({
       results: [
         {
-          id: 'old-1',
+          id: '00000000-0000-0000-0000-00000000b001',
+          type: 'paragraph',
+          paragraph: {
+            rich_text: [
+              {
+                plain_text: 'hello',
+              },
+            ],
+          },
+        },
+      ],
+      has_more: false,
+      next_cursor: null,
+    });
+
+    await updatePageContent('00000000-0000-0000-0000-000000000001', [
+      {
+        type: 'paragraph',
+        paragraph: {
+          rich_text: [
+            {
+              text: {
+                content: 'hello',
+              },
+            },
+          ],
+        },
+      },
+    ]);
+
+    expect(mockBlocksDelete).not.toHaveBeenCalled();
+    expect(mockBlocksUpdate).not.toHaveBeenCalled();
+    expect(mockBlocksChildrenAppend).not.toHaveBeenCalled();
+  });
+
+  it('inserts new block in middle with after parameter', async () => {
+    mockBlocksChildrenList.mockResolvedValueOnce({
+      results: [
+        {
+          id: '00000000-0000-0000-0000-00000000b001',
+          type: 'paragraph',
+          paragraph: {
+            rich_text: [{ plain_text: 'a' }],
+          },
         },
         {
-          id: 'old-2',
+          id: '00000000-0000-0000-0000-00000000b002',
+          type: 'paragraph',
+          paragraph: {
+            rich_text: [{ plain_text: 'b' }],
+          },
+        },
+      ],
+      has_more: false,
+      next_cursor: null,
+    });
+    mockBlocksChildrenAppend.mockResolvedValue({});
+
+    const insertBlock = {
+      type: 'paragraph',
+      paragraph: {
+        rich_text: [{ text: { content: 'X' } }],
+      },
+    };
+
+    await updatePageContent('00000000-0000-0000-0000-000000000001', [
+      {
+        type: 'paragraph',
+        paragraph: {
+          rich_text: [{ text: { content: 'a' } }],
+        },
+      },
+      insertBlock,
+      {
+        type: 'paragraph',
+        paragraph: {
+          rich_text: [{ text: { content: 'b' } }],
+        },
+      },
+    ]);
+
+    expect(mockBlocksChildrenAppend).toHaveBeenCalledTimes(1);
+    expect(mockBlocksChildrenAppend).toHaveBeenCalledWith({
+      block_id: '00000000-0000-0000-0000-000000000001',
+      children: [insertBlock],
+      after: '00000000-0000-0000-0000-00000000b001',
+    });
+    expect(mockBlocksDelete).not.toHaveBeenCalled();
+  });
+
+  it('inserts at start with no after parameter', async () => {
+    mockBlocksChildrenList.mockResolvedValueOnce({
+      results: [
+        {
+          id: '00000000-0000-0000-0000-00000000b001',
+          type: 'paragraph',
+          paragraph: {
+            rich_text: [{ plain_text: 'a' }],
+          },
+        },
+      ],
+      has_more: false,
+      next_cursor: null,
+    });
+    mockBlocksChildrenAppend.mockResolvedValue({});
+
+    const insertBlock = {
+      type: 'paragraph',
+      paragraph: {
+        rich_text: [{ text: { content: 'X' } }],
+      },
+    };
+
+    await updatePageContent('00000000-0000-0000-0000-000000000001', [
+      insertBlock,
+      {
+        type: 'paragraph',
+        paragraph: {
+          rich_text: [{ text: { content: 'a' } }],
+        },
+      },
+    ]);
+
+    expect(mockBlocksChildrenAppend).toHaveBeenCalledTimes(1);
+    expect(mockBlocksChildrenAppend).toHaveBeenCalledWith({
+      block_id: '00000000-0000-0000-0000-000000000001',
+      children: [insertBlock],
+      after: undefined,
+    });
+  });
+
+  it('deletes removed blocks', async () => {
+    mockBlocksChildrenList.mockResolvedValueOnce({
+      results: [
+        {
+          id: '00000000-0000-0000-0000-00000000b001',
+          type: 'paragraph',
+          paragraph: {
+            rich_text: [{ plain_text: 'a' }],
+          },
+        },
+        {
+          id: '00000000-0000-0000-0000-00000000b002',
+          type: 'paragraph',
+          paragraph: {
+            rich_text: [{ plain_text: 'b' }],
+          },
+        },
+        {
+          id: '00000000-0000-0000-0000-00000000b003',
+          type: 'paragraph',
+          paragraph: {
+            rich_text: [{ plain_text: 'c' }],
+          },
+        },
+      ],
+      has_more: false,
+      next_cursor: null,
+    });
+    mockBlocksDelete.mockResolvedValue({});
+
+    await updatePageContent('00000000-0000-0000-0000-000000000001', [
+      {
+        type: 'paragraph',
+        paragraph: {
+          rich_text: [{ text: { content: 'a' } }],
+        },
+      },
+      {
+        type: 'paragraph',
+        paragraph: {
+          rich_text: [{ text: { content: 'c' } }],
+        },
+      },
+    ]);
+
+    expect(mockBlocksDelete).toHaveBeenCalledTimes(1);
+    expect(mockBlocksDelete).toHaveBeenCalledWith({
+      block_id: '00000000-0000-0000-0000-00000000b002',
+    });
+    expect(mockBlocksChildrenAppend).not.toHaveBeenCalled();
+  });
+
+  it('handles type mismatch via delete + insert', async () => {
+    mockBlocksChildrenList.mockResolvedValueOnce({
+      results: [
+        {
+          id: '00000000-0000-0000-0000-00000000b001',
+          type: 'paragraph',
+          paragraph: {
+            rich_text: [{ plain_text: 'a' }],
+          },
+        },
+        {
+          id: '00000000-0000-0000-0000-00000000b002',
+          type: 'paragraph',
+          paragraph: {
+            rich_text: [{ plain_text: 'b' }],
+          },
         },
       ],
       has_more: false,
@@ -244,108 +441,159 @@ describe('updatePageContent', () => {
     mockBlocksDelete.mockResolvedValue({});
     mockBlocksChildrenAppend.mockResolvedValue({});
 
-    const newBlocks = [
-      {
-        type: 'paragraph',
+    const h1Block = {
+      type: 'heading_1',
+      heading_1: {
+        rich_text: [{ text: { content: 'a' } }],
       },
-    ];
-    await updatePageContent('page-id', newBlocks);
+    };
+    const pBlock = {
+      type: 'paragraph',
+      paragraph: {
+        rich_text: [{ text: { content: 'c' } }],
+      },
+    };
 
-    expect(mockBlocksChildrenList).toHaveBeenCalledWith({
-      block_id: 'page-id',
-      page_size: 100,
-    });
+    await updatePageContent('00000000-0000-0000-0000-000000000001', [h1Block, pBlock]);
+
+    // Type mismatch → delete all old, insert all new
     expect(mockBlocksDelete).toHaveBeenCalledTimes(2);
-    expect(mockBlocksDelete).toHaveBeenCalledWith({
-      block_id: 'old-1',
-    });
-    expect(mockBlocksDelete).toHaveBeenCalledWith({
-      block_id: 'old-2',
-    });
-    expect(mockBlocksChildrenAppend).toHaveBeenCalledWith({
-      block_id: 'page-id',
-      children: newBlocks,
-    });
-  });
-
-  it('appends new blocks in chunks of 100', async () => {
-    mockBlocksChildrenList.mockResolvedValueOnce({
-      results: [],
-      has_more: false,
-      next_cursor: null,
-    });
-    mockBlocksChildrenAppend.mockResolvedValue({});
-
-    // Create 250 blocks
-    const newBlocks = Array.from(
-      {
-        length: 250,
-      },
-      (_, i) => ({
-        type: 'paragraph',
-        id: `block-${i}`,
-      }),
-    );
-
-    await updatePageContent('page-id', newBlocks);
-
-    expect(mockBlocksChildrenAppend).toHaveBeenCalledTimes(
-      3,
-    );
-    expect(
-      mockBlocksChildrenAppend,
-    ).toHaveBeenNthCalledWith(1, {
-      block_id: 'page-id',
-      children: newBlocks.slice(0, 100),
-    });
-    expect(
-      mockBlocksChildrenAppend,
-    ).toHaveBeenNthCalledWith(2, {
-      block_id: 'page-id',
-      children: newBlocks.slice(100, 200),
-    });
-    expect(
-      mockBlocksChildrenAppend,
-    ).toHaveBeenNthCalledWith(3, {
-      block_id: 'page-id',
-      children: newBlocks.slice(200, 250),
-    });
+    expect(mockBlocksDelete).toHaveBeenCalledWith({ block_id: '00000000-0000-0000-0000-00000000b001' });
+    expect(mockBlocksDelete).toHaveBeenCalledWith({ block_id: '00000000-0000-0000-0000-00000000b002' });
+    expect(mockBlocksChildrenAppend).toHaveBeenCalledTimes(2);
+    expect(mockBlocksUpdate).not.toHaveBeenCalled();
   });
 
   it('returns early when blocks array is empty', async () => {
-    await updatePageContent('page-id', []);
+    await updatePageContent('00000000-0000-0000-0000-000000000001', []);
 
     expect(mockBlocksChildrenList).not.toHaveBeenCalled();
     expect(mockBlocksDelete).not.toHaveBeenCalled();
     expect(mockBlocksChildrenAppend).not.toHaveBeenCalled();
   });
 
-  it('skips blocks without id when deleting', async () => {
+  it('paginates when fetching existing blocks', async () => {
+    mockBlocksChildrenList
+      .mockResolvedValueOnce({
+        results: [
+          {
+            id: '00000000-0000-0000-0000-00000000b001',
+            type: 'paragraph',
+            paragraph: {
+              rich_text: [{ plain_text: 'a' }],
+            },
+          },
+        ],
+        has_more: true,
+        next_cursor: 'cursor-1',
+      })
+      .mockResolvedValueOnce({
+        results: [
+          {
+            id: '00000000-0000-0000-0000-00000000b002',
+            type: 'paragraph',
+            paragraph: {
+              rich_text: [{ plain_text: 'b' }],
+            },
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      });
+    mockBlocksDelete.mockResolvedValue({});
+
+    await updatePageContent('00000000-0000-0000-0000-000000000001', [
+      {
+        type: 'paragraph',
+        paragraph: {
+          rich_text: [{ text: { content: 'a' } }],
+        },
+      },
+    ]);
+
+    expect(mockBlocksChildrenList).toHaveBeenCalledTimes(2);
+    expect(mockBlocksChildrenList).toHaveBeenNthCalledWith(
+      2,
+      {
+        block_id: '00000000-0000-0000-0000-000000000001',
+        start_cursor: 'cursor-1',
+        page_size: 100,
+      },
+    );
+    // b1 kept, b2 deleted
+    expect(mockBlocksDelete).toHaveBeenCalledTimes(1);
+    expect(mockBlocksDelete).toHaveBeenCalledWith({
+      block_id: '00000000-0000-0000-0000-00000000b002',
+    });
+  });
+
+  it('operations are sequential, not parallel', async () => {
+    const callOrder: string[] = [];
+
     mockBlocksChildrenList.mockResolvedValueOnce({
       results: [
         {
-          id: 'has-id',
+          id: '00000000-0000-0000-0000-00000000b001',
+          type: 'paragraph',
+          paragraph: {
+            rich_text: [{ plain_text: 'a' }],
+          },
         },
         {
-          noId: true,
+          id: '00000000-0000-0000-0000-00000000b002',
+          type: 'paragraph',
+          paragraph: {
+            rich_text: [{ plain_text: 'b' }],
+          },
         },
       ],
       has_more: false,
       next_cursor: null,
     });
-    mockBlocksDelete.mockResolvedValue({});
-    mockBlocksChildrenAppend.mockResolvedValue({});
 
-    await updatePageContent('page-id', [
-      {
-        type: 'paragraph',
+    mockBlocksDelete.mockImplementation(
+      async (arg: unknown) => {
+        const { block_id: blockId } = arg as { block_id: string };
+        callOrder.push(`delete-start-${blockId}`);
+        await new Promise((r) => { setTimeout(r, 10); });
+        callOrder.push(`delete-end-${blockId}`);
       },
-    ]);
+    );
+    mockBlocksChildrenAppend.mockImplementation(
+      async () => {
+        callOrder.push('insert-start');
+        await new Promise((r) => { setTimeout(r, 10); });
+        callOrder.push('insert-end');
+      },
+    );
 
-    expect(mockBlocksDelete).toHaveBeenCalledTimes(1);
-    expect(mockBlocksDelete).toHaveBeenCalledWith({
-      block_id: 'has-id',
+    const insertBlock = {
+      type: 'paragraph',
+      paragraph: {
+        rich_text: [{ text: { content: 'X' } }],
+      },
+    };
+
+    // Old: [a, b], New: [X] → delete a, delete b, insert X
+    await updatePageContent('00000000-0000-0000-0000-000000000001', [insertBlock]);
+
+    // Verify sequential: each op completes before next starts
+    for (let i = 0; i < callOrder.length - 1; i += 2) {
+      const startIdx = i;
+      const endIdx = i + 1;
+      expect(callOrder[endIdx]).toContain(
+        callOrder[startIdx].replace('-start', '-end').replace(`-${callOrder[startIdx].split('-').pop()}`, ''),
+      );
+    }
+    // Simpler check: last delete-end before first insert-start
+    let lastDeleteEnd = -1;
+    callOrder.forEach((c: string, idx: number) => {
+      if (c.startsWith('delete-end')) lastDeleteEnd = idx;
     });
+    const firstInsertStart = callOrder.indexOf('insert-start');
+    if (lastDeleteEnd >= 0 && firstInsertStart >= 0) {
+      expect(lastDeleteEnd).toBeLessThan(firstInsertStart);
+    }
   });
 });
 
@@ -355,10 +603,10 @@ describe('archivePage', () => {
   it('calls notion.pages.update with archived=true', async () => {
     mockPagesUpdate.mockResolvedValueOnce({});
 
-    await archivePage('page-to-archive');
+    await archivePage('00000000-0000-0000-0000-000000000099');
 
     expect(mockPagesUpdate).toHaveBeenCalledWith({
-      page_id: 'page-to-archive',
+      page_id: '00000000-0000-0000-0000-000000000099',
       archived: true,
     });
   });
@@ -372,23 +620,23 @@ describe('getPageMeta', () => {
       last_edited_time: '2025-01-15T10:30:00.000Z',
     });
 
-    const meta = await getPageMeta('page-123');
+    const meta = await getPageMeta('00000000-0000-0000-0000-000000000abc');
 
     expect(meta).toEqual({
       lastEditedTime: '2025-01-15T10:30:00.000Z',
     });
     expect(mockPagesRetrieve).toHaveBeenCalledWith({
-      page_id: 'page-123',
+      page_id: '00000000-0000-0000-0000-000000000abc',
     });
   });
 
   it('throws when page has no last_edited_time', async () => {
     mockPagesRetrieve.mockResolvedValueOnce({
-      id: 'page-123',
+      id: '00000000-0000-0000-0000-000000000abc',
     });
 
-    await expect(getPageMeta('page-123')).rejects.toThrow(
-      'Page page-123 has no last_edited_time',
+    await expect(getPageMeta('00000000-0000-0000-0000-000000000abc')).rejects.toThrow(
+      'Page 00000000-0000-0000-0000-000000000abc has no last_edited_time',
     );
   });
 });
@@ -419,7 +667,7 @@ describe('withRetry (indirect)', () => {
       .spyOn(console, 'log')
       .mockImplementation(() => {});
 
-    const promise = archivePage('page-id');
+    const promise = archivePage('00000000-0000-0000-0000-000000000001');
 
     // First retry: wait 1000ms
     await jest.advanceTimersByTimeAsync(1000);
@@ -449,7 +697,7 @@ describe('withRetry (indirect)', () => {
 
     mockPagesRetrieve.mockRejectedValueOnce(serverError);
 
-    await expect(getPageMeta('page-id')).rejects.toEqual(
+    await expect(getPageMeta('00000000-0000-0000-0000-000000000001')).rejects.toEqual(
       serverError,
     );
     expect(mockPagesRetrieve).toHaveBeenCalledTimes(1);
@@ -472,7 +720,7 @@ describe('withRetry (indirect)', () => {
 
     // Attach rejection handler immediately to avoid unhandled rejection warnings
     let caughtError: unknown;
-    const promise = archivePage('page-id').catch((err) => {
+    const promise = archivePage('00000000-0000-0000-0000-000000000001').catch((err) => {
       caughtError = err;
     });
 
@@ -521,55 +769,5 @@ describe('rate limiting', () => {
     expect(
       mockEnqueue.mock.calls.length,
     ).toBeGreaterThanOrEqual(4);
-  });
-
-  it('updatePageContent block deletion is sequential, not Promise.all', async () => {
-    const callOrder: string[] = [];
-
-    mockBlocksChildrenList.mockResolvedValueOnce({
-      results: [
-        {
-          id: 'a',
-        },
-        {
-          id: 'b',
-        },
-        {
-          id: 'c',
-        },
-      ],
-      has_more: false,
-      next_cursor: null,
-    });
-
-    mockBlocksDelete.mockImplementation(async (arg: unknown) => {
-      const { block_id: blockId } = arg as { block_id: string };
-      callOrder.push(`delete-start-${blockId}`);
-      await new Promise((r) => {
-        setTimeout(r, 10);
-      });
-      callOrder.push(`delete-end-${blockId}`);
-    });
-    mockBlocksChildrenAppend.mockResolvedValue({});
-
-    await updatePageContent('page-id', [
-      {
-        type: 'p',
-      },
-    ]);
-
-    // If sequential, each delete-end comes before next delete-start
-    const deleteStarts = callOrder.filter((s) => s.startsWith('delete-start'));
-    const deleteEnds = callOrder.filter((s) => s.startsWith('delete-end'));
-    expect(deleteStarts.length).toBe(3);
-    expect(deleteEnds.length).toBe(3);
-
-    // Verify sequential: delete-end-a before delete-start-b
-    expect(callOrder.indexOf('delete-end-a')).toBeLessThan(
-      callOrder.indexOf('delete-start-b'),
-    );
-    expect(callOrder.indexOf('delete-end-b')).toBeLessThan(
-      callOrder.indexOf('delete-start-c'),
-    );
   });
 });

@@ -12,6 +12,8 @@ import {
   dirname,
   extname,
 } from 'path';
+import { appendFileSync } from 'fs';
+import { homedir } from 'os';
 
 import {
   hashContent,
@@ -26,8 +28,19 @@ import {
   getPageMeta,
 } from './notion.js';
 import { mdToBlocks, blocksToMd } from './converter.js';
+import { syncLock } from './sync-lock.js';
 
 import type { SyncState, FileState } from './state.js';
+
+const DEBUG_LOG = resolve(homedir(), '.notion-sync', 'debug.jsonl');
+
+const debugLog = (entry: Record<string, unknown>): void => {
+  const line = JSON.stringify({
+    ts: new Date().toISOString(),
+    ...entry,
+  });
+  try { appendFileSync(DEBUG_LOG, `${line}\n`); } catch { /* ignore */ }
+};
 
 type NotionTree = Record<
   string,
@@ -200,6 +213,14 @@ export const syncFile = async (
   const relPath = relative(absDir, absFile);
   const content = await readFile(absFile, 'utf-8');
 
+  debugLog({
+    event: 'syncFile:enter',
+    relPath,
+    contentLength: content.length,
+    contentPreview: content.slice(0, 200),
+    contentEmpty: content.trim() === '',
+  });
+
   if (content.trim() === '') {
     console.log('Skipping empty file: %s', relPath);
 
@@ -217,6 +238,15 @@ export const syncFile = async (
 
   const title = titleFromPath(relPath);
   const blocks = mdToBlocks(content);
+
+  debugLog({
+    event: 'syncFile:willSync',
+    relPath,
+    hasExisting: !!existing,
+    oldHash: existing ? existing.localHash.slice(0, 8) : null,
+    newHash: hash.slice(0, 8),
+    blockCount: blocks.length,
+  });
   const parentDir = dirname(relPath);
   let parentPageId = state.rootPageId;
 
@@ -230,7 +260,7 @@ export const syncFile = async (
 
   if (existing) {
     console.log('Updating: %s', relPath);
-    await updatePageContent(existing.notionPageId, blocks);
+    await updatePageContent(existing.notionPageId, blocks, `syncFile:update:${relPath}`);
     const { lastEditedTime } = await getPageMeta(
       existing.notionPageId,
     );
@@ -248,7 +278,7 @@ export const syncFile = async (
     if (match) {
       console.log('Reusing: %s → %s', relPath, match.id);
       pageId = match.id;
-      await updatePageContent(pageId, blocks);
+      await updatePageContent(pageId, blocks, `syncFile:reuse:${relPath}`);
     } else {
       console.log('Creating: %s', relPath);
       pageId = await createPage(parentPageId, title, blocks);
@@ -318,7 +348,9 @@ const pullNotionOnly = async (
           await mkdir(dirname(absFile), {
             recursive: true,
           });
+          syncLock.markPollerWrite(fileRelPath);
           await writeFile(absFile, md);
+          syncLock.clearPollerWrite(fileRelPath);
 
           const { lastEditedTime } = await getPageMeta(
             node.id,
@@ -423,6 +455,17 @@ export const syncFromNotion = async (
   dirPath: string,
   state: SyncState,
 ): Promise<void> => {
+  // Skip polling while the watcher is actively syncing to Notion.
+  // Polling during a watcher sync can read partial Notion state and
+  // overwrite the local file with truncated content.
+  if (syncLock.isWatcherActive()) {
+    debugLog({
+      event: 'syncFromNotion:skipped', reason: 'watcherActive',
+    });
+    console.log('Skipping poll — watcher sync in progress');
+    return;
+  }
+
   const absDir = resolve(dirPath);
 
   // Sequential — API rate limits
@@ -436,6 +479,12 @@ export const syncFromNotion = async (
         if (
           lastEditedTime !== fileState.notionLastEdited
         ) {
+          debugLog({
+            event: 'syncFromNotion:changed',
+            relPath,
+            oldEditedTime: fileState.notionLastEdited,
+            newEditedTime: lastEditedTime,
+          });
           console.log('Notion changed: %s', relPath);
           const md = await blocksToMd(
             fileState.notionPageId,
@@ -444,7 +493,11 @@ export const syncFromNotion = async (
           await mkdir(dirname(absFile), {
             recursive: true,
           });
+
+          // Mark this file so the watcher ignores the write
+          syncLock.markPollerWrite(relPath);
           await writeFile(absFile, md);
+          syncLock.clearPollerWrite(relPath);
 
           state.files[relPath] = buildFileState(
             fileState.notionPageId,

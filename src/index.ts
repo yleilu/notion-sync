@@ -8,6 +8,7 @@ import { mkdir } from 'fs/promises';
 
 import {
   writePid,
+  readPid,
   cleanPid,
   saveState,
   hashPath,
@@ -125,6 +126,22 @@ const start = async (
   }
 
   const id = hashPath(dirPath);
+
+  const existingPid = await readPid(dirPath);
+  if (existingPid !== null) {
+    try {
+      process.kill(existingPid, 0);
+      console.error(
+        'Daemon already running (PID %d). Use "notion-sync stop %s" first.',
+        existingPid,
+        id,
+      );
+      process.exit(1);
+    } catch {
+      await cleanPid(dirPath);
+    }
+  }
+
   const stateDir = getStateDir(dirPath);
   await mkdir(stateDir, {
     recursive: true,
