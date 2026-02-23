@@ -354,6 +354,7 @@ describe('sync operations', () => {
             type: 'paragraph',
           },
         ],
+        expect.any(String),
       );
       expect(mockCreatePage).not.toHaveBeenCalled();
       expect(state.files['existing.md']).toEqual({
@@ -616,6 +617,7 @@ describe('sync operations', () => {
             type: 'paragraph',
           },
         ],
+        expect.any(String),
       );
       expect(mockCreatePage).not.toHaveBeenCalled();
       expect(state.files['test/test-md.md']).toEqual({

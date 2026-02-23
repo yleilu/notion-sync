@@ -14,7 +14,7 @@ const timers = new Map<
   ReturnType<typeof setTimeout>
 >();
 const syncing = new Set<string>();
-type PendingFn = () => Promise<void>;
+type PendingFn = () => Promise<void>
 const pending = new Map<string, PendingFn>();
 
 const debounce = (key: string, fn: () => void): void => {
@@ -81,28 +81,20 @@ export const startWatcher = (
       return;
     }
 
+    const logSyncErr = (
+      label: string,
+      err: unknown,
+    ): void => {
+      console.error('Sync error (%s):', label, err);
+    };
+
     if (event === 'add' || event === 'change') {
       debounce(relPath, () => {
-        guardedSync(
-          relPath,
-          () => syncLock.runWatcher(() => syncFile(absPath, absDir, state)),
-        ).catch((err) => console.error(
-          'Sync error (%s %s):',
-          event,
-          relPath,
-          err,
-        ));
+        guardedSync(relPath, () => syncLock.runWatcher(() => syncFile(absPath, absDir, state))).catch((err) => logSyncErr(`${event} ${relPath}`, err));
       });
     } else if (event === 'unlink') {
       debounce(relPath, () => {
-        guardedSync(
-          relPath,
-          () => syncLock.runWatcher(() => syncDeleteFile(absPath, absDir, state)),
-        ).catch((err) => console.error(
-          'Sync error (unlink %s):',
-          relPath,
-          err,
-        ));
+        guardedSync(relPath, () => syncLock.runWatcher(() => syncDeleteFile(absPath, absDir, state))).catch((err) => logSyncErr(`unlink ${relPath}`, err));
       });
     }
   };

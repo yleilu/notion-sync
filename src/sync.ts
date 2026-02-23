@@ -32,14 +32,22 @@ import { syncLock } from './sync-lock.js';
 
 import type { SyncState, FileState } from './state.js';
 
-const DEBUG_LOG = resolve(homedir(), '.notion-sync', 'debug.jsonl');
+const DEBUG_LOG = resolve(
+  homedir(),
+  '.notion-sync',
+  'debug.jsonl',
+);
 
 const debugLog = (entry: Record<string, unknown>): void => {
   const line = JSON.stringify({
     ts: new Date().toISOString(),
     ...entry,
   });
-  try { appendFileSync(DEBUG_LOG, `${line}\n`); } catch { /* ignore */ }
+  try {
+    appendFileSync(DEBUG_LOG, `${line}\n`);
+  } catch {
+    /* ignore */
+  }
 };
 
 type NotionTree = Record<
@@ -243,7 +251,9 @@ export const syncFile = async (
     event: 'syncFile:willSync',
     relPath,
     hasExisting: !!existing,
-    oldHash: existing ? existing.localHash.slice(0, 8) : null,
+    oldHash: existing
+      ? existing.localHash.slice(0, 8)
+      : null,
     newHash: hash.slice(0, 8),
     blockCount: blocks.length,
   });
@@ -260,7 +270,11 @@ export const syncFile = async (
 
   if (existing) {
     console.log('Updating: %s', relPath);
-    await updatePageContent(existing.notionPageId, blocks, `syncFile:update:${relPath}`);
+    await updatePageContent(
+      existing.notionPageId,
+      blocks,
+      `syncFile:update:${relPath}`,
+    );
     const { lastEditedTime } = await getPageMeta(
       existing.notionPageId,
     );
@@ -278,7 +292,11 @@ export const syncFile = async (
     if (match) {
       console.log('Reusing: %s → %s', relPath, match.id);
       pageId = match.id;
-      await updatePageContent(pageId, blocks, `syncFile:reuse:${relPath}`);
+      await updatePageContent(
+        pageId,
+        blocks,
+        `syncFile:reuse:${relPath}`,
+      );
     } else {
       console.log('Creating: %s', relPath);
       pageId = await createPage(parentPageId, title, blocks);
@@ -460,7 +478,8 @@ export const syncFromNotion = async (
   // overwrite the local file with truncated content.
   if (syncLock.isWatcherActive()) {
     debugLog({
-      event: 'syncFromNotion:skipped', reason: 'watcherActive',
+      event: 'syncFromNotion:skipped',
+      reason: 'watcherActive',
     });
     console.log('Skipping poll — watcher sync in progress');
     return;

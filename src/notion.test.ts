@@ -94,7 +94,9 @@ describe('getChildPages', () => {
       next_cursor: null,
     });
 
-    const pages = await getChildPages('00000000-0000-0000-0000-000000000010');
+    const pages = await getChildPages(
+      '00000000-0000-0000-0000-000000000010',
+    );
 
     expect(pages).toEqual([
       {
@@ -142,7 +144,9 @@ describe('getChildPages', () => {
         next_cursor: null,
       });
 
-    const pages = await getChildPages('00000000-0000-0000-0000-000000000010');
+    const pages = await getChildPages(
+      '00000000-0000-0000-0000-000000000010',
+    );
 
     expect(pages).toEqual([
       {
@@ -178,7 +182,9 @@ describe('getChildPages', () => {
       next_cursor: null,
     });
 
-    const pages = await getChildPages('00000000-0000-0000-0000-000000000010');
+    const pages = await getChildPages(
+      '00000000-0000-0000-0000-000000000010',
+    );
 
     expect(pages).toEqual([]);
   });
@@ -206,7 +212,9 @@ describe('createPage', () => {
       blocks,
     );
 
-    expect(id).toBe('new-00000000-0000-0000-0000-000000000001');
+    expect(id).toBe(
+      'new-00000000-0000-0000-0000-000000000001',
+    );
     expect(mockPagesCreate).toHaveBeenCalledWith({
       parent: {
         page_id: '00000000-0000-0000-0000-000000000123',
@@ -249,20 +257,23 @@ describe('updatePageContent', () => {
       next_cursor: null,
     });
 
-    await updatePageContent('00000000-0000-0000-0000-000000000001', [
-      {
-        type: 'paragraph',
-        paragraph: {
-          rich_text: [
-            {
-              text: {
-                content: 'hello',
+    await updatePageContent(
+      '00000000-0000-0000-0000-000000000001',
+      [
+        {
+          type: 'paragraph',
+          paragraph: {
+            rich_text: [
+              {
+                text: {
+                  content: 'hello',
+                },
               },
-            },
-          ],
+            ],
+          },
         },
-      },
-    ]);
+      ],
+    );
 
     expect(mockBlocksDelete).not.toHaveBeenCalled();
     expect(mockBlocksUpdate).not.toHaveBeenCalled();
@@ -276,46 +287,83 @@ describe('updatePageContent', () => {
           id: '00000000-0000-0000-0000-00000000b001',
           type: 'paragraph',
           paragraph: {
-            rich_text: [{ plain_text: 'a' }],
+            rich_text: [
+              {
+                plain_text: 'a',
+              },
+            ],
           },
         },
         {
           id: '00000000-0000-0000-0000-00000000b002',
           type: 'paragraph',
           paragraph: {
-            rich_text: [{ plain_text: 'b' }],
+            rich_text: [
+              {
+                plain_text: 'b',
+              },
+            ],
           },
         },
       ],
       has_more: false,
       next_cursor: null,
     });
-    mockBlocksChildrenAppend.mockResolvedValue({});
+    mockBlocksChildrenAppend.mockResolvedValue({
+      results: [
+        {
+          id: 'mock-inserted',
+        },
+      ],
+    });
 
     const insertBlock = {
       type: 'paragraph',
       paragraph: {
-        rich_text: [{ text: { content: 'X' } }],
+        rich_text: [
+          {
+            text: {
+              content: 'X',
+            },
+          },
+        ],
       },
     };
 
-    await updatePageContent('00000000-0000-0000-0000-000000000001', [
-      {
-        type: 'paragraph',
-        paragraph: {
-          rich_text: [{ text: { content: 'a' } }],
+    await updatePageContent(
+      '00000000-0000-0000-0000-000000000001',
+      [
+        {
+          type: 'paragraph',
+          paragraph: {
+            rich_text: [
+              {
+                text: {
+                  content: 'a',
+                },
+              },
+            ],
+          },
         },
-      },
-      insertBlock,
-      {
-        type: 'paragraph',
-        paragraph: {
-          rich_text: [{ text: { content: 'b' } }],
+        insertBlock,
+        {
+          type: 'paragraph',
+          paragraph: {
+            rich_text: [
+              {
+                text: {
+                  content: 'b',
+                },
+              },
+            ],
+          },
         },
-      },
-    ]);
+      ],
+    );
 
-    expect(mockBlocksChildrenAppend).toHaveBeenCalledTimes(1);
+    expect(mockBlocksChildrenAppend).toHaveBeenCalledTimes(
+      1,
+    );
     expect(mockBlocksChildrenAppend).toHaveBeenCalledWith({
       block_id: '00000000-0000-0000-0000-000000000001',
       children: [insertBlock],
@@ -331,34 +379,70 @@ describe('updatePageContent', () => {
           id: '00000000-0000-0000-0000-00000000b001',
           type: 'paragraph',
           paragraph: {
-            rich_text: [{ plain_text: 'a' }],
+            rich_text: [
+              {
+                plain_text: 'a',
+              },
+            ],
           },
         },
       ],
       has_more: false,
       next_cursor: null,
     });
-    mockBlocksChildrenAppend.mockResolvedValue({});
+    mockBlocksChildrenAppend.mockResolvedValue({
+      results: [
+        {
+          id: 'mock-inserted',
+        },
+      ],
+    });
 
     const insertBlock = {
       type: 'paragraph',
       paragraph: {
-        rich_text: [{ text: { content: 'X' } }],
+        rich_text: [
+          {
+            text: {
+              content: 'X',
+            },
+          },
+        ],
       },
     };
 
-    await updatePageContent('00000000-0000-0000-0000-000000000001', [
-      insertBlock,
-      {
-        type: 'paragraph',
-        paragraph: {
-          rich_text: [{ text: { content: 'a' } }],
+    await updatePageContent(
+      '00000000-0000-0000-0000-000000000001',
+      [
+        insertBlock,
+        {
+          type: 'paragraph',
+          paragraph: {
+            rich_text: [
+              {
+                text: {
+                  content: 'a',
+                },
+              },
+            ],
+          },
         },
-      },
-    ]);
+      ],
+    );
 
-    expect(mockBlocksChildrenAppend).toHaveBeenCalledTimes(1);
-    expect(mockBlocksChildrenAppend).toHaveBeenCalledWith({
+    // Leading insert triggers delete-all + re-append fallback
+    expect(mockBlocksDelete).toHaveBeenCalledTimes(1);
+    expect(mockBlocksDelete).toHaveBeenCalledWith({
+      block_id: '00000000-0000-0000-0000-00000000b001',
+    });
+
+    // Re-appends all desired blocks sequentially
+    expect(mockBlocksChildrenAppend).toHaveBeenCalledTimes(
+      2,
+    );
+    expect(
+      mockBlocksChildrenAppend,
+    ).toHaveBeenNthCalledWith(1, {
       block_id: '00000000-0000-0000-0000-000000000001',
       children: [insertBlock],
       after: undefined,
@@ -372,21 +456,33 @@ describe('updatePageContent', () => {
           id: '00000000-0000-0000-0000-00000000b001',
           type: 'paragraph',
           paragraph: {
-            rich_text: [{ plain_text: 'a' }],
+            rich_text: [
+              {
+                plain_text: 'a',
+              },
+            ],
           },
         },
         {
           id: '00000000-0000-0000-0000-00000000b002',
           type: 'paragraph',
           paragraph: {
-            rich_text: [{ plain_text: 'b' }],
+            rich_text: [
+              {
+                plain_text: 'b',
+              },
+            ],
           },
         },
         {
           id: '00000000-0000-0000-0000-00000000b003',
           type: 'paragraph',
           paragraph: {
-            rich_text: [{ plain_text: 'c' }],
+            rich_text: [
+              {
+                plain_text: 'c',
+              },
+            ],
           },
         },
       ],
@@ -395,20 +491,35 @@ describe('updatePageContent', () => {
     });
     mockBlocksDelete.mockResolvedValue({});
 
-    await updatePageContent('00000000-0000-0000-0000-000000000001', [
-      {
-        type: 'paragraph',
-        paragraph: {
-          rich_text: [{ text: { content: 'a' } }],
+    await updatePageContent(
+      '00000000-0000-0000-0000-000000000001',
+      [
+        {
+          type: 'paragraph',
+          paragraph: {
+            rich_text: [
+              {
+                text: {
+                  content: 'a',
+                },
+              },
+            ],
+          },
         },
-      },
-      {
-        type: 'paragraph',
-        paragraph: {
-          rich_text: [{ text: { content: 'c' } }],
+        {
+          type: 'paragraph',
+          paragraph: {
+            rich_text: [
+              {
+                text: {
+                  content: 'c',
+                },
+              },
+            ],
+          },
         },
-      },
-    ]);
+      ],
+    );
 
     expect(mockBlocksDelete).toHaveBeenCalledTimes(1);
     expect(mockBlocksDelete).toHaveBeenCalledWith({
@@ -424,14 +535,22 @@ describe('updatePageContent', () => {
           id: '00000000-0000-0000-0000-00000000b001',
           type: 'paragraph',
           paragraph: {
-            rich_text: [{ plain_text: 'a' }],
+            rich_text: [
+              {
+                plain_text: 'a',
+              },
+            ],
           },
         },
         {
           id: '00000000-0000-0000-0000-00000000b002',
           type: 'paragraph',
           paragraph: {
-            rich_text: [{ plain_text: 'b' }],
+            rich_text: [
+              {
+                plain_text: 'b',
+              },
+            ],
           },
         },
       ],
@@ -439,33 +558,63 @@ describe('updatePageContent', () => {
       next_cursor: null,
     });
     mockBlocksDelete.mockResolvedValue({});
-    mockBlocksChildrenAppend.mockResolvedValue({});
+    mockBlocksChildrenAppend.mockResolvedValue({
+      results: [
+        {
+          id: 'mock-inserted',
+        },
+      ],
+    });
 
     const h1Block = {
       type: 'heading_1',
       heading_1: {
-        rich_text: [{ text: { content: 'a' } }],
+        rich_text: [
+          {
+            text: {
+              content: 'a',
+            },
+          },
+        ],
       },
     };
     const pBlock = {
       type: 'paragraph',
       paragraph: {
-        rich_text: [{ text: { content: 'c' } }],
+        rich_text: [
+          {
+            text: {
+              content: 'c',
+            },
+          },
+        ],
       },
     };
 
-    await updatePageContent('00000000-0000-0000-0000-000000000001', [h1Block, pBlock]);
+    await updatePageContent(
+      '00000000-0000-0000-0000-000000000001',
+      [h1Block, pBlock],
+    );
 
     // Type mismatch → delete all old, insert all new
     expect(mockBlocksDelete).toHaveBeenCalledTimes(2);
-    expect(mockBlocksDelete).toHaveBeenCalledWith({ block_id: '00000000-0000-0000-0000-00000000b001' });
-    expect(mockBlocksDelete).toHaveBeenCalledWith({ block_id: '00000000-0000-0000-0000-00000000b002' });
-    expect(mockBlocksChildrenAppend).toHaveBeenCalledTimes(2);
+    expect(mockBlocksDelete).toHaveBeenCalledWith({
+      block_id: '00000000-0000-0000-0000-00000000b001',
+    });
+    expect(mockBlocksDelete).toHaveBeenCalledWith({
+      block_id: '00000000-0000-0000-0000-00000000b002',
+    });
+    expect(mockBlocksChildrenAppend).toHaveBeenCalledTimes(
+      2,
+    );
     expect(mockBlocksUpdate).not.toHaveBeenCalled();
   });
 
   it('returns early when blocks array is empty', async () => {
-    await updatePageContent('00000000-0000-0000-0000-000000000001', []);
+    await updatePageContent(
+      '00000000-0000-0000-0000-000000000001',
+      [],
+    );
 
     expect(mockBlocksChildrenList).not.toHaveBeenCalled();
     expect(mockBlocksDelete).not.toHaveBeenCalled();
@@ -480,7 +629,11 @@ describe('updatePageContent', () => {
             id: '00000000-0000-0000-0000-00000000b001',
             type: 'paragraph',
             paragraph: {
-              rich_text: [{ plain_text: 'a' }],
+              rich_text: [
+                {
+                  plain_text: 'a',
+                },
+              ],
             },
           },
         ],
@@ -493,7 +646,11 @@ describe('updatePageContent', () => {
             id: '00000000-0000-0000-0000-00000000b002',
             type: 'paragraph',
             paragraph: {
-              rich_text: [{ plain_text: 'b' }],
+              rich_text: [
+                {
+                  plain_text: 'b',
+                },
+              ],
             },
           },
         ],
@@ -502,14 +659,23 @@ describe('updatePageContent', () => {
       });
     mockBlocksDelete.mockResolvedValue({});
 
-    await updatePageContent('00000000-0000-0000-0000-000000000001', [
-      {
-        type: 'paragraph',
-        paragraph: {
-          rich_text: [{ text: { content: 'a' } }],
+    await updatePageContent(
+      '00000000-0000-0000-0000-000000000001',
+      [
+        {
+          type: 'paragraph',
+          paragraph: {
+            rich_text: [
+              {
+                text: {
+                  content: 'a',
+                },
+              },
+            ],
+          },
         },
-      },
-    ]);
+      ],
+    );
 
     expect(mockBlocksChildrenList).toHaveBeenCalledTimes(2);
     expect(mockBlocksChildrenList).toHaveBeenNthCalledWith(
@@ -536,14 +702,22 @@ describe('updatePageContent', () => {
           id: '00000000-0000-0000-0000-00000000b001',
           type: 'paragraph',
           paragraph: {
-            rich_text: [{ plain_text: 'a' }],
+            rich_text: [
+              {
+                plain_text: 'a',
+              },
+            ],
           },
         },
         {
           id: '00000000-0000-0000-0000-00000000b002',
           type: 'paragraph',
           paragraph: {
-            rich_text: [{ plain_text: 'b' }],
+            rich_text: [
+              {
+                plain_text: 'b',
+              },
+            ],
           },
         },
       ],
@@ -553,16 +727,22 @@ describe('updatePageContent', () => {
 
     mockBlocksDelete.mockImplementation(
       async (arg: unknown) => {
-        const { block_id: blockId } = arg as { block_id: string };
+        const { block_id: blockId } = arg as {
+          block_id: string
+        };
         callOrder.push(`delete-start-${blockId}`);
-        await new Promise((r) => { setTimeout(r, 10); });
+        await new Promise((r) => {
+          setTimeout(r, 10);
+        });
         callOrder.push(`delete-end-${blockId}`);
       },
     );
     mockBlocksChildrenAppend.mockImplementation(
       async () => {
         callOrder.push('insert-start');
-        await new Promise((r) => { setTimeout(r, 10); });
+        await new Promise((r) => {
+          setTimeout(r, 10);
+        });
         callOrder.push('insert-end');
       },
     );
@@ -570,19 +750,33 @@ describe('updatePageContent', () => {
     const insertBlock = {
       type: 'paragraph',
       paragraph: {
-        rich_text: [{ text: { content: 'X' } }],
+        rich_text: [
+          {
+            text: {
+              content: 'X',
+            },
+          },
+        ],
       },
     };
 
     // Old: [a, b], New: [X] → delete a, delete b, insert X
-    await updatePageContent('00000000-0000-0000-0000-000000000001', [insertBlock]);
+    await updatePageContent(
+      '00000000-0000-0000-0000-000000000001',
+      [insertBlock],
+    );
 
     // Verify sequential: each op completes before next starts
     for (let i = 0; i < callOrder.length - 1; i += 2) {
       const startIdx = i;
       const endIdx = i + 1;
       expect(callOrder[endIdx]).toContain(
-        callOrder[startIdx].replace('-start', '-end').replace(`-${callOrder[startIdx].split('-').pop()}`, ''),
+        callOrder[startIdx]
+          .replace('-start', '-end')
+          .replace(
+            `-${callOrder[startIdx].split('-').pop()}`,
+            '',
+          ),
       );
     }
     // Simpler check: last delete-end before first insert-start
@@ -603,7 +797,9 @@ describe('archivePage', () => {
   it('calls notion.pages.update with archived=true', async () => {
     mockPagesUpdate.mockResolvedValueOnce({});
 
-    await archivePage('00000000-0000-0000-0000-000000000099');
+    await archivePage(
+      '00000000-0000-0000-0000-000000000099',
+    );
 
     expect(mockPagesUpdate).toHaveBeenCalledWith({
       page_id: '00000000-0000-0000-0000-000000000099',
@@ -620,7 +816,9 @@ describe('getPageMeta', () => {
       last_edited_time: '2025-01-15T10:30:00.000Z',
     });
 
-    const meta = await getPageMeta('00000000-0000-0000-0000-000000000abc');
+    const meta = await getPageMeta(
+      '00000000-0000-0000-0000-000000000abc',
+    );
 
     expect(meta).toEqual({
       lastEditedTime: '2025-01-15T10:30:00.000Z',
@@ -635,7 +833,9 @@ describe('getPageMeta', () => {
       id: '00000000-0000-0000-0000-000000000abc',
     });
 
-    await expect(getPageMeta('00000000-0000-0000-0000-000000000abc')).rejects.toThrow(
+    await expect(
+      getPageMeta('00000000-0000-0000-0000-000000000abc'),
+    ).rejects.toThrow(
       'Page 00000000-0000-0000-0000-000000000abc has no last_edited_time',
     );
   });
@@ -667,7 +867,9 @@ describe('withRetry (indirect)', () => {
       .spyOn(console, 'log')
       .mockImplementation(() => {});
 
-    const promise = archivePage('00000000-0000-0000-0000-000000000001');
+    const promise = archivePage(
+      '00000000-0000-0000-0000-000000000001',
+    );
 
     // First retry: wait 1000ms
     await jest.advanceTimersByTimeAsync(1000);
@@ -697,9 +899,9 @@ describe('withRetry (indirect)', () => {
 
     mockPagesRetrieve.mockRejectedValueOnce(serverError);
 
-    await expect(getPageMeta('00000000-0000-0000-0000-000000000001')).rejects.toEqual(
-      serverError,
-    );
+    await expect(
+      getPageMeta('00000000-0000-0000-0000-000000000001'),
+    ).rejects.toEqual(serverError);
     expect(mockPagesRetrieve).toHaveBeenCalledTimes(1);
   });
 
@@ -720,7 +922,9 @@ describe('withRetry (indirect)', () => {
 
     // Attach rejection handler immediately to avoid unhandled rejection warnings
     let caughtError: unknown;
-    const promise = archivePage('00000000-0000-0000-0000-000000000001').catch((err) => {
+    const promise = archivePage(
+      '00000000-0000-0000-0000-000000000001',
+    ).catch((err) => {
       caughtError = err;
     });
 
@@ -757,7 +961,13 @@ describe('rate limiting', () => {
     mockPagesRetrieve.mockResolvedValue({
       last_edited_time: 't',
     });
-    mockBlocksChildrenAppend.mockResolvedValue({});
+    mockBlocksChildrenAppend.mockResolvedValue({
+      results: [
+        {
+          id: 'mock-inserted',
+        },
+      ],
+    });
 
     mockEnqueue.mockClear();
 

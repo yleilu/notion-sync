@@ -57,18 +57,6 @@ const h1 = (text: string, id?: string) => ({
   },
 });
 
-const h1Response = (text: string, id: string) => ({
-  id,
-  type: 'heading_1',
-  heading_1: {
-    rich_text: [
-      {
-        plain_text: text,
-      },
-    ],
-  },
-});
-
 // ── extractPlainText ─────────────────────────────────────────────────────────
 
 describe('extractPlainText', () => {
@@ -210,13 +198,31 @@ describe('diffBlocks', () => {
       pResponse('c', 'b3'),
     ];
     const inserted = p('X');
-    const ops = diffBlocks(old, [p('a'), inserted, p('b'), p('c')]);
+    const ops = diffBlocks(old, [
+      p('a'),
+      inserted,
+      p('b'),
+      p('c'),
+    ]);
 
     expect(ops).toEqual([
-      { type: 'keep', blockId: 'b1' },
-      { type: 'insert', afterBlockId: 'b1', newBlock: inserted },
-      { type: 'keep', blockId: 'b2' },
-      { type: 'keep', blockId: 'b3' },
+      {
+        type: 'keep',
+        blockId: 'b1',
+      },
+      {
+        type: 'insert',
+        afterBlockId: 'b1',
+        newBlock: inserted,
+      },
+      {
+        type: 'keep',
+        blockId: 'b2',
+      },
+      {
+        type: 'keep',
+        blockId: 'b3',
+      },
     ]);
   });
 
@@ -226,9 +232,19 @@ describe('diffBlocks', () => {
     const ops = diffBlocks(old, [inserted, p('a'), p('b')]);
 
     expect(ops).toEqual([
-      { type: 'insert', afterBlockId: null, newBlock: inserted },
-      { type: 'keep', blockId: 'b1' },
-      { type: 'keep', blockId: 'b2' },
+      {
+        type: 'insert',
+        afterBlockId: null,
+        newBlock: inserted,
+      },
+      {
+        type: 'keep',
+        blockId: 'b1',
+      },
+      {
+        type: 'keep',
+        blockId: 'b2',
+      },
     ]);
   });
 
@@ -238,8 +254,15 @@ describe('diffBlocks', () => {
     const ops = diffBlocks(old, [p('a'), inserted]);
 
     expect(ops).toEqual([
-      { type: 'keep', blockId: 'b1' },
-      { type: 'insert', afterBlockId: 'b1', newBlock: inserted },
+      {
+        type: 'keep',
+        blockId: 'b1',
+      },
+      {
+        type: 'insert',
+        afterBlockId: 'b1',
+        newBlock: inserted,
+      },
     ]);
   });
 
@@ -252,9 +275,18 @@ describe('diffBlocks', () => {
     const ops = diffBlocks(old, [p('a'), p('c')]);
 
     expect(ops).toEqual([
-      { type: 'keep', blockId: 'b1' },
-      { type: 'delete', blockId: 'b2' },
-      { type: 'keep', blockId: 'b3' },
+      {
+        type: 'keep',
+        blockId: 'b1',
+      },
+      {
+        type: 'delete',
+        blockId: 'b2',
+      },
+      {
+        type: 'keep',
+        blockId: 'b3',
+      },
     ]);
   });
 
@@ -267,9 +299,18 @@ describe('diffBlocks', () => {
     const ops = diffBlocks(old, [p('b'), p('c')]);
 
     expect(ops).toEqual([
-      { type: 'delete', blockId: 'b1' },
-      { type: 'keep', blockId: 'b2' },
-      { type: 'keep', blockId: 'b3' },
+      {
+        type: 'delete',
+        blockId: 'b1',
+      },
+      {
+        type: 'keep',
+        blockId: 'b2',
+      },
+      {
+        type: 'keep',
+        blockId: 'b3',
+      },
     ]);
   });
 
@@ -279,7 +320,11 @@ describe('diffBlocks', () => {
     const ops = diffBlocks(old, [newBlock]);
 
     expect(ops).toEqual([
-      { type: 'update', blockId: 'b1', newBlock },
+      {
+        type: 'update',
+        blockId: 'b1',
+        newBlock,
+      },
     ]);
   });
 
@@ -289,8 +334,15 @@ describe('diffBlocks', () => {
     const ops = diffBlocks(old, [newBlock]);
 
     expect(ops).toEqual([
-      { type: 'delete', blockId: 'b1' },
-      { type: 'insert', afterBlockId: null, newBlock },
+      {
+        type: 'delete',
+        blockId: 'b1',
+      },
+      {
+        type: 'insert',
+        afterBlockId: null,
+        newBlock,
+      },
     ]);
   });
 
@@ -299,7 +351,11 @@ describe('diffBlocks', () => {
     const ops = diffBlocks([], [newP]);
 
     expect(ops).toEqual([
-      { type: 'insert', afterBlockId: null, newBlock: newP },
+      {
+        type: 'insert',
+        afterBlockId: null,
+        newBlock: newP,
+      },
     ]);
   });
 
@@ -308,24 +364,38 @@ describe('diffBlocks', () => {
     const ops = diffBlocks(old, []);
 
     expect(ops).toEqual([
-      { type: 'delete', blockId: 'b1' },
+      {
+        type: 'delete',
+        blockId: 'b1',
+      },
     ]);
   });
 
   it('inserts multiple blocks at same position', () => {
-    const old = [
-      pResponse('a', 'b1'),
-      pResponse('c', 'b3'),
-    ];
+    const old = [pResponse('a', 'b1'), pResponse('c', 'b3')];
     const x = p('X');
     const y = p('Y');
     const ops = diffBlocks(old, [p('a'), x, y, p('c')]);
 
     expect(ops).toEqual([
-      { type: 'keep', blockId: 'b1' },
-      { type: 'insert', afterBlockId: 'b1', newBlock: x },
-      { type: 'insert', afterBlockId: 'b1', newBlock: y },
-      { type: 'keep', blockId: 'b3' },
+      {
+        type: 'keep',
+        blockId: 'b1',
+      },
+      {
+        type: 'insert',
+        afterBlockId: 'b1',
+        newBlock: x,
+      },
+      {
+        type: 'insert',
+        afterBlockId: 'b1',
+        newBlock: y,
+      },
+      {
+        type: 'keep',
+        blockId: 'b3',
+      },
     ]);
   });
 
@@ -340,10 +410,23 @@ describe('diffBlocks', () => {
     const ops = diffBlocks(old, [p('a'), e, p('c')]);
 
     expect(ops).toEqual([
-      { type: 'keep', blockId: 'b1' },
-      { type: 'update', blockId: 'b2', newBlock: e },
-      { type: 'keep', blockId: 'b3' },
-      { type: 'delete', blockId: 'b4' },
+      {
+        type: 'keep',
+        blockId: 'b1',
+      },
+      {
+        type: 'update',
+        blockId: 'b2',
+        newBlock: e,
+      },
+      {
+        type: 'keep',
+        blockId: 'b3',
+      },
+      {
+        type: 'delete',
+        blockId: 'b4',
+      },
     ]);
   });
 
@@ -351,7 +434,10 @@ describe('diffBlocks', () => {
     const notionResponse = (text: string, id: string) => ({
       object: 'block',
       id,
-      parent: { type: 'page_id', page_id: 'page-1' },
+      parent: {
+        type: 'page_id',
+        page_id: 'page-1',
+      },
       created_time: '2026-01-01T00:00:00.000Z',
       last_edited_time: '2026-01-01T00:00:00.000Z',
       has_children: false,
@@ -361,10 +447,17 @@ describe('diffBlocks', () => {
         rich_text: [
           {
             type: 'text',
-            text: { content: text, link: null },
+            text: {
+              content: text,
+              link: null,
+            },
             annotations: {
-              bold: false, italic: false, strikethrough: false,
-              underline: false, code: false, color: 'default',
+              bold: false,
+              italic: false,
+              strikethrough: false,
+              underline: false,
+              code: false,
+              color: 'default',
             },
             plain_text: text,
             href: null,
@@ -382,10 +475,16 @@ describe('diffBlocks', () => {
           {
             type: 'text',
             annotations: {
-              bold: false, strikethrough: false, underline: false,
-              italic: false, code: false, color: 'default',
+              bold: false,
+              strikethrough: false,
+              underline: false,
+              italic: false,
+              code: false,
+              color: 'default',
             },
-            text: { content: text },
+            text: {
+              content: text,
+            },
           },
         ],
       },
@@ -405,10 +504,23 @@ describe('diffBlocks', () => {
     ]);
 
     expect(ops).toEqual([
-      { type: 'keep', blockId: 'b1' },
-      { type: 'keep', blockId: 'b2' },
-      { type: 'insert', afterBlockId: 'b2', newBlock: inserted },
-      { type: 'keep', blockId: 'b3' },
+      {
+        type: 'keep',
+        blockId: 'b1',
+      },
+      {
+        type: 'keep',
+        blockId: 'b2',
+      },
+      {
+        type: 'insert',
+        afterBlockId: 'b2',
+        newBlock: inserted,
+      },
+      {
+        type: 'keep',
+        blockId: 'b3',
+      },
     ]);
   });
 
@@ -421,10 +533,17 @@ describe('diffBlocks', () => {
         rich_text: [
           {
             type: 'text',
-            text: { content: text, link: null },
+            text: {
+              content: text,
+              link: null,
+            },
             annotations: {
-              bold: false, italic: false, strikethrough: false,
-              underline: false, code: false, color: 'default',
+              bold: false,
+              italic: false,
+              strikethrough: false,
+              underline: false,
+              code: false,
+              color: 'default',
             },
             plain_text: text,
             href: null,
@@ -442,10 +561,16 @@ describe('diffBlocks', () => {
           {
             type: 'text',
             annotations: {
-              bold: false, strikethrough: false, underline: false,
-              italic: false, code: false, color: 'default',
+              bold: false,
+              strikethrough: false,
+              underline: false,
+              italic: false,
+              code: false,
+              color: 'default',
             },
-            text: { content: text },
+            text: {
+              content: text,
+            },
           },
         ],
       },
@@ -463,9 +588,18 @@ describe('diffBlocks', () => {
     ]);
 
     expect(ops).toEqual([
-      { type: 'keep', blockId: 'b1' },
-      { type: 'keep', blockId: 'b2' },
-      { type: 'keep', blockId: 'b3' },
+      {
+        type: 'keep',
+        blockId: 'b1',
+      },
+      {
+        type: 'keep',
+        blockId: 'b2',
+      },
+      {
+        type: 'keep',
+        blockId: 'b3',
+      },
     ]);
   });
 
@@ -476,10 +610,24 @@ describe('diffBlocks', () => {
     const ops = diffBlocks(old, [newH1, newP]);
 
     expect(ops).toEqual([
-      { type: 'delete', blockId: 'b1' },
-      { type: 'delete', blockId: 'b2' },
-      { type: 'insert', afterBlockId: null, newBlock: newH1 },
-      { type: 'insert', afterBlockId: null, newBlock: newP },
+      {
+        type: 'delete',
+        blockId: 'b1',
+      },
+      {
+        type: 'delete',
+        blockId: 'b2',
+      },
+      {
+        type: 'insert',
+        afterBlockId: null,
+        newBlock: newH1,
+      },
+      {
+        type: 'insert',
+        afterBlockId: null,
+        newBlock: newP,
+      },
     ]);
   });
 
@@ -492,9 +640,18 @@ describe('diffBlocks', () => {
     const ops = diffBlocks(old, [p('a')]);
 
     expect(ops).toEqual([
-      { type: 'keep', blockId: 'b1' },
-      { type: 'delete', blockId: 'b2' },
-      { type: 'delete', blockId: 'b3' },
+      {
+        type: 'keep',
+        blockId: 'b1',
+      },
+      {
+        type: 'delete',
+        blockId: 'b2',
+      },
+      {
+        type: 'delete',
+        blockId: 'b3',
+      },
     ]);
   });
 });
