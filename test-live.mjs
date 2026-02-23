@@ -76,7 +76,7 @@ const createNotionPage = async (parentId, title, mdContent) => {
 };
 
 const cleanStateDir = async () => {
-  const stateDir = getStateDir(TEST_DIR);
+  const stateDir = getStateDir(TEST_DIR, ROOT_PAGE_ID);
   const stateFile = resolve(stateDir, 'state.json');
   if (existsSync(stateFile)) await unlink(stateFile);
 };

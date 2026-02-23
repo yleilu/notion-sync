@@ -223,6 +223,7 @@ describe('sync operations', () => {
 
       expect(mockLoadState).toHaveBeenCalledWith(
         resolve(DIR),
+        ROOT_PAGE,
       );
       expect(state.rootPageId).toBe(ROOT_PAGE);
       expect(state.dirPath).toBe(resolve(DIR));

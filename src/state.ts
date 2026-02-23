@@ -31,20 +31,23 @@ export interface SyncState {
 
 const BASE_DIR = resolve(homedir(), '.notion-sync');
 
-export const hashPath = (dirPath: string): string => createHash('sha256')
-  .update(resolve(dirPath))
+export const hashPath = (dirPath: string, pageId: string): string => createHash('sha256')
+  .update(`${pageId}:${resolve(dirPath)}`)
   .digest('hex')
-  .slice(0, 12);
+  .slice(0, 7);
 
 export const hashContent = (content: string): string => createHash('sha256').update(content).digest('hex');
 
-export const getStateDir = (dirPath: string): string => resolve(BASE_DIR, hashPath(dirPath));
+export const getStateDir = (dirPath: string, pageId: string): string => (
+  resolve(BASE_DIR, hashPath(dirPath, pageId))
+);
 
 export const loadState = async (
   dirPath: string,
+  pageId: string,
 ): Promise<SyncState | null> => {
   const stateFile = resolve(
-    getStateDir(dirPath),
+    getStateDir(dirPath, pageId),
     'state.json',
   );
   try {
@@ -60,7 +63,7 @@ export const saveState = async (
   dirPath: string,
   state: SyncState,
 ): Promise<void> => {
-  const dir = getStateDir(dirPath);
+  const dir = getStateDir(dirPath, state.rootPageId);
   await mkdir(dir, {
     recursive: true,
   });
@@ -70,8 +73,9 @@ export const saveState = async (
 
 export const writePid = async (
   dirPath: string,
+  pageId: string,
 ): Promise<void> => {
-  const dir = getStateDir(dirPath);
+  const dir = getStateDir(dirPath, pageId);
   await mkdir(dir, {
     recursive: true,
   });
@@ -81,9 +85,10 @@ export const writePid = async (
 
 export const readPid = async (
   dirPath: string,
+  pageId: string,
 ): Promise<number | null> => {
   const pidFile = resolve(
-    getStateDir(dirPath),
+    getStateDir(dirPath, pageId),
     'daemon.pid',
   );
   try {
@@ -97,9 +102,10 @@ export const readPid = async (
 
 export const cleanPid = async (
   dirPath: string,
+  pageId: string,
 ): Promise<void> => {
   const pidFile = resolve(
-    getStateDir(dirPath),
+    getStateDir(dirPath, pageId),
     'daemon.pid',
   );
   try {

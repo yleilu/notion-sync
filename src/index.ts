@@ -94,7 +94,7 @@ const daemonChild = async (
   const effectivePageId = await resolveNamespacePage(pageId, namespaceName);
   console.log('Using namespace page: %s → %s', namespaceName, effectivePageId);
 
-  await writePid(dirPath);
+  await writePid(dirPath, effectivePageId);
 
   let state: SyncState;
   try {
@@ -108,7 +108,7 @@ const daemonChild = async (
       type: 'sync-error',
       error: String(err),
     });
-    await cleanPid(dirPath);
+    await cleanPid(dirPath, effectivePageId);
     process.exit(1);
   }
 
@@ -125,7 +125,7 @@ const daemonChild = async (
     server.close();
     await watcher.close();
     await saveState(resolve(dirPath), state);
-    await cleanPid(dirPath);
+    await cleanPid(dirPath, effectivePageId);
     console.log('Saved state and exited');
     process.exit(0);
   };
@@ -145,9 +145,9 @@ const start = async (
     process.exit(1);
   }
 
-  const id = hashPath(dirPath);
+  const id = hashPath(dirPath, pageId);
 
-  const existingPid = await readPid(dirPath);
+  const existingPid = await readPid(dirPath, pageId);
   if (existingPid !== null) {
     try {
       process.kill(existingPid, 0);
@@ -158,11 +158,11 @@ const start = async (
       );
       process.exit(1);
     } catch {
-      await cleanPid(dirPath);
+      await cleanPid(dirPath, pageId);
     }
   }
 
-  const stateDir = getStateDir(dirPath);
+  const stateDir = getStateDir(dirPath, pageId);
   await mkdir(stateDir, {
     recursive: true,
   });

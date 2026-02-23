@@ -442,7 +442,7 @@ export const startupSync = async (
   rootPageId: string,
 ): Promise<SyncState> => {
   const absDir = resolve(dirPath);
-  let state = await loadState(absDir);
+  let state = await loadState(absDir, rootPageId);
 
   if (!state) {
     state = {
