@@ -12,6 +12,8 @@ import { homedir } from 'os';
 export interface FileState {
   notionPageId: string
   localHash: string
+  localMtime: number
+  localSize: number
   notionLastEdited: string
   lastSyncedAt: string
 }

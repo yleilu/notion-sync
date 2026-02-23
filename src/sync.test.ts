@@ -95,6 +95,11 @@ const dirent = (
   isSymbolicLink: () => type === 'symlink',
 });
 
+const fakeStat = (mtimeMs = 1000, size = 100) => ({
+  mtimeMs,
+  size,
+});
+
 // ════════════════════════════════════════════════════════════════════
 // Tests
 // ════════════════════════════════════════════════════════════════════
@@ -189,6 +194,8 @@ describe('sync operations', () => {
       mockReaddir.mockResolvedValueOnce([
         dirent('hello.md'),
       ]);
+      // syncFile stat() call
+      mockStat.mockResolvedValueOnce(fakeStat(2000, 50));
       mockReadFile.mockResolvedValueOnce('# Hello');
       mockHashContent.mockReturnValueOnce('hash-hello');
       mockMdToBlocks.mockReturnValueOnce([
@@ -199,6 +206,10 @@ describe('sync operations', () => {
       // syncFile checks siblings before creating
       mockGetChildPages.mockResolvedValueOnce([]);
       mockCreatePage.mockResolvedValueOnce('notion-page-1');
+      mockGetPageMeta.mockResolvedValueOnce({
+        lastEditedTime: '2026-02-22T01:00:00.000Z',
+      });
+      // Remote catch-up: same timestamp (just created)
       mockGetPageMeta.mockResolvedValueOnce({
         lastEditedTime: '2026-02-22T01:00:00.000Z',
       });
@@ -215,6 +226,8 @@ describe('sync operations', () => {
       expect(state.files['hello.md']).toEqual({
         notionPageId: 'notion-page-1',
         localHash: 'hash-hello',
+        localMtime: 2000,
+        localSize: 50,
         notionLastEdited: '2026-02-22T01:00:00.000Z',
         lastSyncedAt: NOW,
       });
@@ -224,7 +237,89 @@ describe('sync operations', () => {
       );
     });
 
-    it('skips unchanged files (matching hash)', async () => {
+    it('skips unchanged files via fast mtime+size check', async () => {
+      const existingState = {
+        rootPageId: ROOT_PAGE,
+        dirPath: resolve(DIR),
+        files: {
+          'hello.md': {
+            notionPageId: 'existing-page',
+            localHash: 'hash-hello',
+            localMtime: 1000,
+            localSize: 100,
+            notionLastEdited: '2026-02-21T00:00:00.000Z',
+            lastSyncedAt: '2026-02-21T00:00:00.000Z',
+          },
+        },
+        dirs: {},
+      };
+      mockLoadState.mockResolvedValueOnce(existingState);
+      mockReaddir.mockResolvedValueOnce([
+        dirent('hello.md'),
+      ]);
+      // stat returns matching mtime+size — fast skip
+      mockStat.mockResolvedValueOnce(fakeStat(1000, 100));
+      // Remote catch-up: unchanged
+      mockGetPageMeta.mockResolvedValueOnce({
+        lastEditedTime: '2026-02-21T00:00:00.000Z',
+      });
+      // fetchNotionTree calls getChildPages for root
+      mockGetChildPages.mockResolvedValueOnce([]);
+
+      const state = await startupSync(DIR, ROOT_PAGE);
+
+      // readFile should NOT be called — fast skip bypassed it
+      expect(mockReadFile).not.toHaveBeenCalled();
+      expect(mockCreatePage).not.toHaveBeenCalled();
+      expect(mockUpdatePageContent).not.toHaveBeenCalled();
+      expect(state.files['hello.md'].notionPageId).toBe(
+        'existing-page',
+      );
+      expect(mockSaveState).toHaveBeenCalled();
+    });
+
+    it('falls back to hash check when mtime differs', async () => {
+      const existingState = {
+        rootPageId: ROOT_PAGE,
+        dirPath: resolve(DIR),
+        files: {
+          'hello.md': {
+            notionPageId: 'existing-page',
+            localHash: 'hash-hello',
+            localMtime: 1000,
+            localSize: 100,
+            notionLastEdited: '2026-02-21T00:00:00.000Z',
+            lastSyncedAt: '2026-02-21T00:00:00.000Z',
+          },
+        },
+        dirs: {},
+      };
+      mockLoadState.mockResolvedValueOnce(existingState);
+      mockReaddir.mockResolvedValueOnce([
+        dirent('hello.md'),
+      ]);
+      // stat returns DIFFERENT mtime — triggers full check
+      mockStat.mockResolvedValueOnce(fakeStat(2000, 100));
+      mockReadFile.mockResolvedValueOnce('# Hello');
+      mockHashContent.mockReturnValueOnce('hash-hello'); // same hash
+      // Remote catch-up: unchanged
+      mockGetPageMeta.mockResolvedValueOnce({
+        lastEditedTime: '2026-02-21T00:00:00.000Z',
+      });
+      // fetchNotionTree calls getChildPages for root
+      mockGetChildPages.mockResolvedValueOnce([]);
+
+      await startupSync(DIR, ROOT_PAGE);
+
+      // readFile IS called (mtime mismatch triggers full check)
+      expect(mockReadFile).toHaveBeenCalled();
+      // But no sync to Notion (hash matched)
+      expect(mockCreatePage).not.toHaveBeenCalled();
+      expect(mockUpdatePageContent).not.toHaveBeenCalled();
+      expect(mockSaveState).toHaveBeenCalled();
+    });
+
+    it('falls back to full check when state has no mtime/size (backwards compat)', async () => {
       const existingState = {
         rootPageId: ROOT_PAGE,
         dirPath: resolve(DIR),
@@ -242,20 +337,109 @@ describe('sync operations', () => {
       mockReaddir.mockResolvedValueOnce([
         dirent('hello.md'),
       ]);
+      // stat returns anything — missing localMtime means no fast skip
+      mockStat.mockResolvedValueOnce(fakeStat(1000, 100));
       mockReadFile.mockResolvedValueOnce('# Hello');
-      mockHashContent.mockReturnValueOnce('hash-hello'); // same hash
-      // fetchNotionTree calls getChildPages for root
+      mockHashContent.mockReturnValueOnce('hash-hello');
+      // Remote catch-up: unchanged
+      mockGetPageMeta.mockResolvedValueOnce({
+        lastEditedTime: '2026-02-21T00:00:00.000Z',
+      });
+      // fetchNotionTree
+      mockGetChildPages.mockResolvedValueOnce([]);
+
+      await startupSync(DIR, ROOT_PAGE);
+
+      // readFile IS called (no stored mtime)
+      expect(mockReadFile).toHaveBeenCalled();
+      expect(mockCreatePage).not.toHaveBeenCalled();
+      expect(mockSaveState).toHaveBeenCalled();
+    });
+
+    it('pulls remote changes detected during startup catch-up', async () => {
+      const existingState = {
+        rootPageId: ROOT_PAGE,
+        dirPath: resolve(DIR),
+        files: {
+          'doc.md': {
+            notionPageId: 'notion-doc-id',
+            localHash: 'old-hash',
+            localMtime: 1000,
+            localSize: 50,
+            notionLastEdited: '2026-02-20T00:00:00.000Z',
+            lastSyncedAt: '2026-02-20T00:00:00.000Z',
+          },
+        },
+        dirs: {},
+      };
+      mockLoadState.mockResolvedValueOnce(existingState);
+      // scanLocal: file exists
+      mockReaddir.mockResolvedValueOnce([
+        dirent('doc.md'),
+      ]);
+      // syncFile fast skip (mtime+size match)
+      mockStat.mockResolvedValueOnce(fakeStat(1000, 50));
+      // Remote catch-up: Notion changed
+      mockGetPageMeta.mockResolvedValueOnce({
+        lastEditedTime: '2026-02-22T05:00:00.000Z',
+      });
+      mockBlocksToMd.mockResolvedValueOnce('# Updated from Notion');
+      mockHashContent.mockReturnValueOnce('new-notion-hash');
+      // stat after writing pulled content
+      mockStat.mockResolvedValueOnce(fakeStat(3000, 120));
+      // fetchNotionTree
       mockGetChildPages.mockResolvedValueOnce([]);
 
       const state = await startupSync(DIR, ROOT_PAGE);
 
-      expect(mockCreatePage).not.toHaveBeenCalled();
-      expect(mockUpdatePageContent).not.toHaveBeenCalled();
-      // File should remain in state unchanged
-      expect(state.files['hello.md'].notionPageId).toBe(
-        'existing-page',
+      expect(mockBlocksToMd).toHaveBeenCalledWith('notion-doc-id');
+      expect(mockWriteFile).toHaveBeenCalledWith(
+        resolve(resolve(DIR), 'doc.md'),
+        '# Updated from Notion',
       );
-      expect(mockSaveState).toHaveBeenCalled();
+      expect(state.files['doc.md']).toEqual({
+        notionPageId: 'notion-doc-id',
+        localHash: 'new-notion-hash',
+        localMtime: 3000,
+        localSize: 120,
+        notionLastEdited: '2026-02-22T05:00:00.000Z',
+        lastSyncedAt: NOW,
+      });
+    });
+
+    it('skips remote catch-up when Notion unchanged', async () => {
+      const existingState = {
+        rootPageId: ROOT_PAGE,
+        dirPath: resolve(DIR),
+        files: {
+          'doc.md': {
+            notionPageId: 'notion-doc-id',
+            localHash: 'hash-doc',
+            localMtime: 1000,
+            localSize: 50,
+            notionLastEdited: '2026-02-21T00:00:00.000Z',
+            lastSyncedAt: '2026-02-21T00:00:00.000Z',
+          },
+        },
+        dirs: {},
+      };
+      mockLoadState.mockResolvedValueOnce(existingState);
+      mockReaddir.mockResolvedValueOnce([
+        dirent('doc.md'),
+      ]);
+      // syncFile fast skip
+      mockStat.mockResolvedValueOnce(fakeStat(1000, 50));
+      // Remote catch-up: same timestamp
+      mockGetPageMeta.mockResolvedValueOnce({
+        lastEditedTime: '2026-02-21T00:00:00.000Z',
+      });
+      // fetchNotionTree
+      mockGetChildPages.mockResolvedValueOnce([]);
+
+      await startupSync(DIR, ROOT_PAGE);
+
+      expect(mockBlocksToMd).not.toHaveBeenCalled();
+      expect(mockWriteFile).not.toHaveBeenCalled();
     });
 
     it('archives removed files from state', async () => {
@@ -266,6 +450,8 @@ describe('sync operations', () => {
           'deleted.md': {
             notionPageId: 'page-to-archive',
             localHash: 'hash-old',
+            localMtime: 0,
+            localSize: 0,
             notionLastEdited: '2026-02-20T00:00:00.000Z',
             lastSyncedAt: '2026-02-20T00:00:00.000Z',
           },
@@ -275,6 +461,10 @@ describe('sync operations', () => {
       mockLoadState.mockResolvedValueOnce(existingState);
       // scanLocal returns empty — no local files
       mockReaddir.mockResolvedValueOnce([]);
+      // Remote catch-up for tracked file (will be archived after)
+      mockGetPageMeta.mockResolvedValueOnce({
+        lastEditedTime: '2026-02-20T00:00:00.000Z',
+      });
       // fetchNotionTree calls getChildPages for root
       mockGetChildPages.mockResolvedValueOnce([]);
 
@@ -298,6 +488,7 @@ describe('sync operations', () => {
       };
       const filePath = resolve(DIR, 'new-file.md');
 
+      mockStat.mockResolvedValueOnce(fakeStat(2000, 50));
       mockReadFile.mockResolvedValueOnce('# New');
       mockHashContent.mockReturnValueOnce('hash-new');
       mockMdToBlocks.mockReturnValueOnce([
@@ -327,6 +518,8 @@ describe('sync operations', () => {
       expect(state.files['new-file.md']).toEqual({
         notionPageId: 'created-page-id',
         localHash: 'hash-new',
+        localMtime: 2000,
+        localSize: 50,
         notionLastEdited: '2026-02-22T02:00:00.000Z',
         lastSyncedAt: NOW,
       });
@@ -344,6 +537,8 @@ describe('sync operations', () => {
           'existing.md': {
             notionPageId: 'existing-page-id',
             localHash: 'old-hash',
+            localMtime: 1000,
+            localSize: 80,
             notionLastEdited: '2026-02-21T00:00:00.000Z',
             lastSyncedAt: '2026-02-21T00:00:00.000Z',
           },
@@ -352,6 +547,7 @@ describe('sync operations', () => {
       };
       const filePath = resolve(DIR, 'existing.md');
 
+      mockStat.mockResolvedValueOnce(fakeStat(2000, 90));
       mockReadFile.mockResolvedValueOnce('# Updated');
       mockHashContent.mockReturnValueOnce('new-hash');
       mockMdToBlocks.mockReturnValueOnce([
@@ -378,13 +574,15 @@ describe('sync operations', () => {
       expect(state.files['existing.md']).toEqual({
         notionPageId: 'existing-page-id',
         localHash: 'new-hash',
+        localMtime: 2000,
+        localSize: 90,
         notionLastEdited: '2026-02-22T03:00:00.000Z',
         lastSyncedAt: NOW,
       });
       expect(mockSaveState).toHaveBeenCalled();
     });
 
-    it('skips when hash matches', async () => {
+    it('fast-skips when mtime+size match stored values', async () => {
       const state = {
         rootPageId: ROOT_PAGE,
         dirPath: resolve(DIR),
@@ -392,6 +590,8 @@ describe('sync operations', () => {
           'unchanged.md': {
             notionPageId: 'page-id',
             localHash: 'same-hash',
+            localMtime: 1000,
+            localSize: 100,
             notionLastEdited: '2026-02-21T00:00:00.000Z',
             lastSyncedAt: '2026-02-21T00:00:00.000Z',
           },
@@ -400,11 +600,44 @@ describe('sync operations', () => {
       };
       const filePath = resolve(DIR, 'unchanged.md');
 
+      // stat matches stored mtime+size
+      mockStat.mockResolvedValueOnce(fakeStat(1000, 100));
+
+      await syncFile(filePath, DIR, state);
+
+      // readFile should NOT be called
+      expect(mockReadFile).not.toHaveBeenCalled();
+      expect(mockCreatePage).not.toHaveBeenCalled();
+      expect(mockUpdatePageContent).not.toHaveBeenCalled();
+      expect(mockSaveState).not.toHaveBeenCalled();
+    });
+
+    it('skips via hash when mtime differs but content unchanged', async () => {
+      const state = {
+        rootPageId: ROOT_PAGE,
+        dirPath: resolve(DIR),
+        files: {
+          'unchanged.md': {
+            notionPageId: 'page-id',
+            localHash: 'same-hash',
+            localMtime: 1000,
+            localSize: 100,
+            notionLastEdited: '2026-02-21T00:00:00.000Z',
+            lastSyncedAt: '2026-02-21T00:00:00.000Z',
+          },
+        },
+        dirs: {},
+      };
+      const filePath = resolve(DIR, 'unchanged.md');
+
+      // mtime changed but content is same
+      mockStat.mockResolvedValueOnce(fakeStat(2000, 100));
       mockReadFile.mockResolvedValueOnce('# Unchanged');
       mockHashContent.mockReturnValueOnce('same-hash');
 
       await syncFile(filePath, DIR, state);
 
+      expect(mockReadFile).toHaveBeenCalled();
       expect(mockCreatePage).not.toHaveBeenCalled();
       expect(mockUpdatePageContent).not.toHaveBeenCalled();
       expect(mockSaveState).not.toHaveBeenCalled();
@@ -420,6 +653,8 @@ describe('sync operations', () => {
           'to-delete.md': {
             notionPageId: 'delete-page-id',
             localHash: 'some-hash',
+            localMtime: 0,
+            localSize: 0,
             notionLastEdited: '2026-02-21T00:00:00.000Z',
             lastSyncedAt: '2026-02-21T00:00:00.000Z',
           },
@@ -465,6 +700,8 @@ describe('sync operations', () => {
           'doc.md': {
             notionPageId: 'notion-doc-id',
             localHash: 'old-hash',
+            localMtime: 0,
+            localSize: 0,
             notionLastEdited: '2026-02-20T00:00:00.000Z',
             lastSyncedAt: '2026-02-20T00:00:00.000Z',
           },
@@ -479,6 +716,7 @@ describe('sync operations', () => {
         '# Updated from Notion',
       );
       mockHashContent.mockReturnValueOnce('new-notion-hash');
+      mockStat.mockResolvedValueOnce(fakeStat(3000, 200));
 
       await syncFromNotion(DIR, state);
 
@@ -498,6 +736,8 @@ describe('sync operations', () => {
       expect(state.files['doc.md']).toEqual({
         notionPageId: 'notion-doc-id',
         localHash: 'new-notion-hash',
+        localMtime: 3000,
+        localSize: 200,
         notionLastEdited: '2026-02-22T05:00:00.000Z',
         lastSyncedAt: NOW,
       });
@@ -512,6 +752,8 @@ describe('sync operations', () => {
           'unchanged.md': {
             notionPageId: 'notion-unchanged-id',
             localHash: 'hash-1',
+            localMtime: 0,
+            localSize: 0,
             notionLastEdited: '2026-02-21T00:00:00.000Z',
             lastSyncedAt: '2026-02-21T00:00:00.000Z',
           },
@@ -542,12 +784,16 @@ describe('sync operations', () => {
           'error-file.md': {
             notionPageId: 'notion-error-id',
             localHash: 'hash-e',
+            localMtime: 0,
+            localSize: 0,
             notionLastEdited: '2026-02-20T00:00:00.000Z',
             lastSyncedAt: '2026-02-20T00:00:00.000Z',
           },
           'ok-file.md': {
             notionPageId: 'notion-ok-id',
             localHash: 'hash-ok',
+            localMtime: 0,
+            localSize: 0,
             notionLastEdited: '2026-02-20T00:00:00.000Z',
             lastSyncedAt: '2026-02-20T00:00:00.000Z',
           },
@@ -598,6 +844,8 @@ describe('sync operations', () => {
           'test/test-md.md': {
             notionPageId: 'symlink-page-id',
             localHash: 'old-hash',
+            localMtime: 1000,
+            localSize: 80,
             notionLastEdited: '2026-02-21T00:00:00.000Z',
             lastSyncedAt: '2026-02-21T00:00:00.000Z',
           },
@@ -612,6 +860,7 @@ describe('sync operations', () => {
       // Chokidar emits relPath "test/test-md.md", watcher resolves to abs path
       const absPath = resolve(DIR, 'test/test-md.md');
 
+      mockStat.mockResolvedValueOnce(fakeStat(2000, 90));
       mockReadFile.mockResolvedValueOnce(
         '# Updated content',
       );
@@ -641,6 +890,8 @@ describe('sync operations', () => {
       expect(state.files['test/test-md.md']).toEqual({
         notionPageId: 'symlink-page-id',
         localHash: 'new-hash',
+        localMtime: 2000,
+        localSize: 90,
         notionLastEdited: '2026-02-22T05:00:00.000Z',
         lastSyncedAt: NOW,
       });

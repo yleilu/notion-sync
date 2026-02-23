@@ -72,9 +72,13 @@ const buildFileState = (
   notionPageId: string,
   localHash: string,
   notionLastEdited: string,
+  localMtime = 0,
+  localSize = 0,
 ): FileState => ({
   notionPageId,
   localHash,
+  localMtime,
+  localSize,
   notionLastEdited,
   lastSyncedAt: new Date().toISOString(),
 });
@@ -230,6 +234,20 @@ export const syncFile = async (
   const absDir = resolve(dirPath);
   const absFile = resolve(filePath);
   const relPath = relative(absDir, absFile);
+
+  // Fast skip: if mtime+size match stored values, file is unchanged
+  const fileStat = await stat(absFile);
+  const existing = state.files[relPath];
+
+  if (
+    existing
+    && existing.localMtime === fileStat.mtimeMs
+    && existing.localSize === fileStat.size
+  ) {
+    console.log('Unchanged (fast): %s', relPath);
+    return;
+  }
+
   const content = await readFile(absFile, 'utf-8');
 
   debugLog({
@@ -247,9 +265,14 @@ export const syncFile = async (
   }
 
   const hash = hashContent(content);
-  const existing = state.files[relPath];
 
   if (existing && existing.localHash === hash) {
+    // Content unchanged but mtime/size drifted — update cached stat
+    state.files[relPath] = {
+      ...existing,
+      localMtime: fileStat.mtimeMs,
+      localSize: fileStat.size,
+    };
     console.log('Unchanged: %s', relPath);
 
     return;
@@ -293,6 +316,8 @@ export const syncFile = async (
       existing.notionPageId,
       hash,
       lastEditedTime,
+      fileStat.mtimeMs,
+      fileStat.size,
     );
   } else {
     // Check Notion for an existing child page with the same title
@@ -318,6 +343,8 @@ export const syncFile = async (
       pageId,
       hash,
       lastEditedTime,
+      fileStat.mtimeMs,
+      fileStat.size,
     );
   }
 
@@ -381,6 +408,7 @@ const pullNotionOnly = async (
           await writeFile(absFile, md);
           syncLock.clearPollerWrite(fileRelPath);
 
+          const fileStat = await stat(absFile);
           const { lastEditedTime } = await getPageMeta(
             node.id,
           );
@@ -388,6 +416,8 @@ const pullNotionOnly = async (
             node.id,
             hashContent(md),
             lastEditedTime,
+            fileStat.mtimeMs,
+            fileStat.size,
           );
           console.log('Pulled file: %s', fileRelPath);
         }
@@ -431,6 +461,41 @@ export const startupSync = async (
   // Sync each file (sequential — API rate limits)
   await files.reduce(
     (chain, file) => chain.then(() => syncFile(file.absolutePath, absDir, state)),
+    Promise.resolve(),
+  );
+
+  // Catch up on remote changes made while daemon was down
+  await Object.entries(state.files).reduce(
+    (chain, [relPath, fileState]) => chain.then(async () => {
+      try {
+        const { lastEditedTime } = await getPageMeta(fileState.notionPageId);
+        if (lastEditedTime !== fileState.notionLastEdited) {
+          console.log('Notion changed: %s', relPath);
+          const md = await blocksToMd(fileState.notionPageId);
+          const absFile = resolve(absDir, relPath);
+          await mkdir(dirname(absFile), {
+            recursive: true,
+          });
+          syncLock.markPollerWrite(relPath);
+          await writeFile(absFile, md);
+          syncLock.clearPollerWrite(relPath);
+          const fileStat = await stat(absFile);
+          state.files[relPath] = buildFileState(
+            fileState.notionPageId,
+            hashContent(md),
+            lastEditedTime,
+            fileStat.mtimeMs,
+            fileStat.size,
+          );
+        }
+      } catch (err) {
+        console.error(
+          'Error checking remote %s:',
+          relPath,
+          err,
+        );
+      }
+    }),
     Promise.resolve(),
   );
 
@@ -529,10 +594,13 @@ export const syncFromNotion = async (
           await writeFile(absFile, md);
           syncLock.clearPollerWrite(relPath);
 
+          const fileStat = await stat(absFile);
           state.files[relPath] = buildFileState(
             fileState.notionPageId,
             hashContent(md),
             lastEditedTime,
+            fileStat.mtimeMs,
+            fileStat.size,
           );
         }
       } catch (err) {
